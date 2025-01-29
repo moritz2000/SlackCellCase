@@ -1,0 +1,3 @@
+*.stl
+GrabCad/*/*
+!GrabCad/*/*.stl
