@@ -1,3 +1,15 @@
+//sources for the cad files:
+//sd module:
+//https://grabcad.com/library/tf-micro-sd-card-memory-modul-arduino-1
+
+//Heltec dev board
+//https://grabcad.com/library/esp32-wifi-lora-1
+
+//HX711
+//https://grabcad.com/library/hx711-15
+
+//grid pcb
+//https://grabcad.com/library/universal_board_50x70mm-1
 include <BOSL2/std.scad>
 
 //pcb() show_anchors();

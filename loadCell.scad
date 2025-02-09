@@ -3,7 +3,7 @@ include <BOSL2/screws.scad>
 
 s_beam_dim = [76.2, 50.8, 25.4];
 cutout_width = 10.4;
-cutout_length = 37.8; //TODO
+cutout_length = 37.8;
 cutout_to_edge = 13.5; 
 
 eps = 0.01;

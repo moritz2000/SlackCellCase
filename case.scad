@@ -11,8 +11,6 @@ include <battery.scad>
 $fa = $preview ? 10 : 1;
 $fs = $preview ? 1 : 0.25;
 
-//used for some BOSL stuf, for example nut traps
-$slop = 0.3;
 
 //ignore message about changes in BOSL api
 $align_msg = false;
@@ -20,69 +18,62 @@ $align_msg = false;
 cell_to_case_gap_xy = 3.5;
 cell_to_case_gap_z = 2;
 
-layer_height = 0.2; //TODO
+//slicer specific settings for all parts except the gasket
+layer_height = 0.3;
+//Recommended wall thickness from slicer
+//With Prusa Slicer, read them of in Print Settings -> Layer and Perimeters -> Vertical Shells
 s2_walls = 1.14;
 s4_walls = 2.21;
 s6_walls = 3.28;
 
 case_wall = s6_walls;
 case_rounding = case_wall;
-//TODO Teardrop rounding
 
 case_inner_dim_xy = [s_beam_dim.x, s_beam_dim.y] + repeat(2*cell_to_case_gap_xy, 2);
 case_inner_dim_z = s_beam_dim.z + 2*cell_to_case_gap_z;
 
 case_outer_dim_xy = case_inner_dim_xy + repeat(2*case_wall, 2);
+gasket_thickness = 1.25; //TODO
 
 cell_holder_width = 10;
 
 cell_holder_rounding = case_rounding - case_wall;
 
 render_spacing = 100;
+
+//used to get section views. Use only false or $preview. This way the render is unaffected.
 show_only_left_half = false;//$preview;
 show_only_front_half = $preview;
+show_only_right_half = false;//$preview;
 
-screw_and_water_test();
+*screw_and_water_test();
 
-
-//when rendering explode the parts sideways up to be able to differentiate them. Export is done through partsScad
-*xdistribute(spacing = $preview ? 0 : render_spacing){
-    case(anchor = TOP)
-        %position(TOP) down(cell_to_case_gap_z + s_beam_dim.z/2) load_cell(show_s_beam = false);
+//When rendering in OpenSCAD, explode the parts sideways up to be able to differentiate them.
+//final export is done through partsScad, and during that the exploding is deactivated
+//More information on how to export this project to distinct stl files: https://web.archive.org/web/20221117221043/https://traverseda.github.io/code/partsScad/index.html
+xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacing){
+    case(anchor = TOP);
     
-
-
-    *cell_holders(anchor = TOP);
+    cell_holders(anchor = TOP);
 
     gasket(anchor = BOTTOM);
 
-    *up(gasket_thickness)
+    up(gasket_thickness)
         lid(anchor = BOTTOM);
 
-    //TODO, Take into account gasket thickness and lid in position
-    *%up(lid_internal_height) pcb(spin = 90, anchor = TOP)
-        attach(BOTTOM, TOP)
-            %fwd(10) battery(spin = -90);
+    if($preview)
+        up(lid_internal_height + gasket_thickness) pcb(spin = 90, anchor = TOP)
+            attach(BOTTOM, TOP)
+                %fwd(10) battery(spin = -90);
     
-    %up(eps) case_clamping_screws(lower = false, upper = false, screw = true);
+    //representation of the screws
+    %up(eps)
+        case_clamping_screws(lower = false, upper = false, screw = true);
 
-}
+    //representation of the loadcell with all connected hardware
+    %down(cell_to_case_gap_z + s_beam_dim.z/2)
+        load_cell(show_s_beam = true);
 
-
-
-//cell_holders_print();
-
-module cell_holders_print(){
-    mirror_copy(v=LEFT, offset = -cell_holder_width - 0.3)
-    mirror_copy(v=FRONT, offset = -cell_holder_width - 0.3)
-        cell_holder();
-    
-    //bridging helper
-    up(s_beam_dim.z/2) cuboid( [cell_holder_width*2, cell_holder_width*2, 2*layer_height],
-            rounding = cell_holder_rounding, edges = "Z",
-            anchor = BOTTOM);
-
-    tube(s_beam_dim.z, od = 10, wall = s2_walls);
 }
 
 //corner piece which allows the loadcell to move while being inside the housing
@@ -113,83 +104,144 @@ module cell_holder() part("cell_holder.stl") recolor("white"){
     }
 }
 
-gasket_thickness = 0.95; //TODO
 
+//For M3 nut insert
 
+case_screw_chamfer = 6;
 
-//is attachable
-module case_tube(height = case_inner_dim_z, anchor = CENTER, spin=0, orient=UP){
-    rect_tube(  height,
-                isize = case_inner_dim_xy,
-                wall = case_wall, rounding = case_rounding, anchor = anchor, spin=spin, orient=orient){
-                    children();
-                }
-}
+case_clamping_middle_offset = case_outer_dim_xy.x/2 - 3;
 
-//For M3 threaded insert
-threaded_insert_wall = case_wall; //TODO test
-threaded_insert_dia = 4.5; //TODO test
-
-screw_bite = 4; //how many mm should the screw be into the threaded insert
-threaded_insert_length = 5.5;
-
-case_clamping_middle_offset = case_outer_dim_xy.x/2 - 7;
-
-case_screw = screw_info(str("M3,", 12), head = "socket", drive="hex", shaft_oversize = 0.8, head_oversize = 0.8, thread="none");
-
-case_screw_counterbore = 20; //doesn't hurt to be larger than needed
-
-
-screw_chamfer_length = 5;
+case_screw = screw_info(str("M3,", 16), head = "socket", drive="hex", shaft_oversize = 0.9, head_oversize = 0.85, thread="none");
+case_nut = nut_info("M3", shape = "hex", thickness = 2.2);
 
 //this moves one of the screw holes to be not in the way of the cable of the load cell
-cable_screw_offset = -13;
+cable_screw_position = [-14, -case_outer_dim_xy.y/2 - 6];
 
-//this includes needed support and cut aways for a screw attachment
+//this includes needed support and cutaways for a screw attachment
 //at the height of the anchor point is the change between screw hole (above) and threaded insert (below)
 module case_clamping_screws(positive = true, negative = true, upper = false, lower = false, screw = false){
+    //wrap the screw_point module into an extra module to be able to change parameters in one point only
+    module normal_case_screw(){
+        screw_point(case_screw, case_nut, positive, negative, upper, lower, screw = screw, edges = BOTTOM, except_edges = BOTTOM + LEFT)
+            children();
+    }
     //All corners
     mirror_copy(RIGHT) mirror_copy(BACK)
-        move([case_clamping_middle_offset, case_outer_dim_xy.y/2]) screw_point(case_screw, positive, negative, upper, lower, screw = screw);
+        move([case_clamping_middle_offset, case_outer_dim_xy.y/2])
+            normal_case_screw()
+                //this one ensures proper wall thickness for the screws in the lid, but keeps it nicely short on the outside
+                if(upper && positive) up(gasket_thickness)
+                    pie_slice(lid_internal_height, d=$tube_od, ang = 90, anchor = BOTTOM, spin = 180);
     //BACK
-    move([0, case_outer_dim_xy.y/2]) screw_point(case_screw, positive, negative, upper, lower, screw = screw);
+    move([0, case_outer_dim_xy.y/2])
+        normal_case_screw()
+            //this one ensures proper wall thickness for the screws in the lid, but keeps it nicely short on the outside
+            if(upper && positive) up(gasket_thickness)
+                pie_slice(lid_internal_height, d=$tube_od, ang = 180, anchor = BOTTOM, spin = 180);
     //The one in the cable channel
-    move([cable_screw_offset, -case_outer_dim_xy.y/2 - 10]) screw_point(case_screw, positive, negative, upper, lower, screw = screw, chamfer = 3, edges = BOTTOM + LEFT);
+    move(cable_screw_position)
+        screw_point(
+            // this one takes a M3x20 screw
+            struct_set(case_screw, "length", 20), case_nut, positive, negative, upper, lower, screw = screw,
+            screw_bite = 15,
+            use_nut_side_trap = false,
+            nut_slot_z_clearance = 3, 
+            nut_slop = 0.1,
+            tube_extra_length = 0,
+            screw_hole_extra_length = 0,
+            rounding1 = case_rounding,
+            chamfer = 0
+        );
 }
 
-//TODO correct the anchors, not urgent
 //the arguments for chamfer go to a cube on the bottom of the tube, so any edges which don't include BOTTOM probably include weird results
-module screw_point(screw_info, positive = true, negative = true, upper = false, lower = false, screw = false, remove_tag = "remove", chamfer = screw_chamfer_length, edges = [BOTTOM + BACK, BOTTOM + FRONT], except_edges = [], rounding2 = case_rounding, teardrop = true){
-    tube_od = threaded_insert_dia + 2*threaded_insert_wall;
+module screw_point(
+    screw_info, nut_info, //screw/nut specs resulting from screw_info() and nut_info(), for the hardware you want to use
+    positive = true, negative = true, //whether to generate geometry which adds (positive) and/or geometry to remove (negative) material 
+    upper = false, lower = false, //whether to generate geometry above and or below the mating plate
+    screw = false, //if true, render the screw
+    //Parameters for chamfering the lower part, it applies to a cube, which gets intersected with the main cylinder
+    chamfer = case_screw_chamfer,
+    edges = [BOTTOM + BACK, BOTTOM + FRONT], except_edges = [],
+    rounding1 = 0, teardrop1 = true, //parameters for rounding the bottom of the lower cylinder
+    rounding2 = case_rounding, teardrop2 = true, //parameters for rounding the top of the upper cylinder
+    screw_bite = 9, //how many mm should the screw be into the threaded insert
+    nut_insert_wall = case_wall, //wall thickness around the nut (not completely correct when shape is hex)
+    nut_slot_z_clearance = 0.8, //makes the nut slot higher, for easy fit
+    nut_slop = 0, //general slop for nut slots
+    bridge_helper_width = s4_walls, bridge_helper_height = layer_height, //makes the first part of the hole in the lower part rectangular for easy bridging
+    head_counterbore_length = 20, //length of the cutout for the screw head in the upper part
+    tube_extra_length = 9,
+    screw_hole_extra_length = 4,
+    use_nut_side_trap = true, //decides if there is a slot in the side to insert the nut
+    remove_tag = "remove"
+){
+    screw_hole_dia = struct_val(screw_info, "diameter") + struct_val(screw_info, "shaft_oversize");
+    $tube_od = struct_val(nut_info, "width") + 2*nut_insert_wall;
     upper_tube_height = struct_val(screw_info, "length") - screw_bite + struct_val(screw_info, "head_height");
-    //holds the inserts
+    lower_height = screw_bite + tube_extra_length;
+    nut_trap_height = struct_val(nut_info, "thickness") + nut_slot_z_clearance + bridge_helper_height;
+
+    module lower_negative(){
+        down(screw_bite){
+            down(screw_hole_extra_length)
+                screw_hole(screw_info, length = struct_val(screw_info, "length") + screw_hole_extra_length, counterbore=head_counterbore_length, anchor=BOTTOM);
+
+            //we have to pass the screw spec here because of a BOSL doesn't allow overriding shape with a nut spec
+            down(nut_slot_z_clearance){
+                if(use_nut_side_trap)
+                    nut_trap_side(trap_width = $tube_od/2, spec = screw_info, thickness = nut_trap_height, shape = struct_val(nut_info, "shape"), $slop = nut_slop, anchor = BOTTOM, spin = 90);
+                else
+                    nut_trap_inline(nut_trap_height, spec=screw_info, shape = struct_val(nut_info, "shape"), $slop = nut_slop, anchor = BOTTOM);
+            }
+        }
+    }
+
+    module upper_negative(){
+        down(screw_bite)
+            screw_hole(screw_info , counterbore=head_counterbore_length,anchor=BOTTOM);
+    }
+
+    //holds the nut
     if(positive){
         if(screw)
             %recolor("grey") down(screw_bite) screw(screw_info, anchor = BOTTOM);
         if(upper)
             tag("keep") difference(){
                 //cyl is used upside down, so the teardrop has an effect
-                cyl(upper_tube_height, d=tube_od, anchor = TOP, orient=DOWN, rounding1 = rounding2, teardrop = teardrop);
-                down(screw_bite)
-                    screw_hole(screw_info , counterbore=case_screw_counterbore,anchor=BOTTOM);
+                cyl(upper_tube_height, d=$tube_od, anchor = TOP, orient=DOWN, rounding1 = rounding2, teardrop = teardrop2);
+                upper_negative();
             }
-        //threaded insert stuff below
-        if(lower) tag_diff("keep") tube(threaded_insert_length, id = threaded_insert_dia, wall = threaded_insert_wall, anchor = TOP)
-            position(BOTTOM)
-                //flat chamfer for a easy printing and strength
-                intersection(){
-                    cyl(screw_chamfer_length, d=$parent_size.x, anchor = TOP);
-                    cuboid([$parent_size.x, $parent_size.y, screw_chamfer_length], chamfer = chamfer, edges = edges, except_edges = except_edges, anchor = TOP);
+        //all the geometry needed to support the nut and screw hole
+        if(lower) tag("keep"){
+            intersection(){
+                union(){
+                    difference(){
+                        cyl(lower_height, d = $tube_od, anchor = TOP, rounding1 = rounding1, teardrop = teardrop1);
+                        lower_negative();
+                    }
+                    //Bridge helpers, makes two thin slabs to convince the slicer to do nice bridging
+                    down(screw_bite - nut_trap_height - nut_slot_z_clearance - 2*nut_slop)
+                        mirror_copy(BACK, offset = -screw_hole_dia/2)
+                            cube([struct_val(nut_info, "width")+ 2*nut_slop, bridge_helper_width + 2*nut_slop, bridge_helper_height], anchor = TOP + BACK);
                 }
+                //this cube is used to get easy to define rectangular chamfers on a cylinder
+                cuboid([$tube_od, $tube_od, lower_height], chamfer = chamfer, edges = edges, except_edges = except_edges, anchor = TOP);
+            }
+        }
     }
         
-    if(negative) tag("remove"){
+    if(negative) tag(remove_tag){
             //hole for the screw
-            if(upper) down(screw_bite)
-                screw_hole(screw_info , counterbore=case_screw_counterbore,anchor=BOTTOM);
-            //hole for the threaded insert
-            if(lower) cyl(threaded_insert_length, d = threaded_insert_dia, anchor = TOP);
+            if(upper)
+                upper_negative();
+            //nut trap
+            if(lower)
+                lower_negative();
     }
+
+    //any children have access to the special $variables
+    children();
 }
 
 module screw_and_water_test(){
@@ -207,7 +259,7 @@ module screw_and_water_test(){
 
     module cuby(){
         diff() rect_tube(size - 2* case_wall, size = [size, size], wall = case_wall, rounding = case_rounding, anchor = CENTER){
-            mirror_copy(BACK, offset=$parent_size.y/2) screw_point(case_screw, lower = true, upper = true, screw = false);
+            mirror_copy(BACK, offset=$parent_size.y/2) screw_point(case_screw, case_nut, lower = true, upper = true, screw = false, edges = BOTTOM + BACK);
             attach([TOP, BOTTOM], TOP) cuboid([size, size, case_wall], rounding = case_rounding, teardrop = true, edges = ["Z", BOTTOM]);
         }
     }
@@ -217,7 +269,7 @@ module screw_and_water_test(){
 lid_internal_height = 15; //TODO derive from the space, the electronics take up
 
 
-module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlue") render() maybe_left_half() maybe_front_half(){
+module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlue") render() maybe_right_half() maybe_left_half() maybe_front_half(){
     anchors = [
         named_anchor("LID_INTERNAL", [0, 0, 0])
     ];
@@ -234,8 +286,15 @@ module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlu
 
 module gasket(anchor = BOTTOM, spin=0, orient=UP) part("gasket.stl") recolor("white") render() maybe_left_half() maybe_front_half(){
     attachable(anchor, spin, orient, size = concat(case_outer_dim_xy, gasket_thickness)){
-        position(BOTTOM) bottom_half(z = gasket_thickness, s = 200) top_half(s=200)
-            case_all(anchor = "BASE_TOP");
+        union(){
+            //cut out part of case all which should be the gasket
+            position(BOTTOM) bottom_half(z = gasket_thickness, s = 200) top_half(s=200)
+                case_all(anchor = "BASE_TOP");
+            //add a small feature to connect the isle of gasket for the cable channel to the rest
+            move(cable_screw_position)
+                rotate(-50) right(case_wall )
+                    cube([10, case_wall, gasket_thickness], anchor = LEFT);
+        }
         children();
     }
 }
@@ -284,10 +343,13 @@ module case_all(anchor = CENTER, spin = 0, orient = UP){
     ];
 
     attachable(anchor, spin, orient, size = case_outer_dim, anchors = anchors){
-        diff() cuboid(case_outer_dim, rounding = case_rounding, edges = "Z"){
-            //big void in the middle
-            tag("remove")
-                cuboid($parent_size - repeat(2*case_wall, 3));
+        diff() {
+            tag_diff("cube"){ //first make the hollow cube in an extra diff, so it doesn't annoy us later
+                cuboid(case_outer_dim, rounding = case_rounding, edges = "Z");
+                //big void in the middle
+                tag("remove")
+                    cuboid($parent_size - repeat(2*case_wall, 3));
+            }
             //take the plane between bottom part and gasket as reference
             up(base_top_z){
                 //stoppers for the cell_holders
@@ -316,17 +378,27 @@ module case_all(anchor = CENTER, spin = 0, orient = UP){
     }
 }
 
-module maybe_front_half(){
+
+//helpers to be able to have nice section views, they need to be used before using the render() function
+module maybe_front_half(s = 150){
     if(show_only_front_half)
-        front_half()
+        front_half(s = s)
             children();
     else
         children();
 }
 
-module maybe_left_half(){
+module maybe_left_half(s = 150){
     if(show_only_left_half)
-        left_half()
+        left_half(s = s)
+            children();
+    else
+        children();
+}
+
+module maybe_right_half(s = 150){
+    if(show_only_right_half)
+        right_half(s = s)
             children();
     else
         children();
