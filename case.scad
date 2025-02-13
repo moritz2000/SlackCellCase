@@ -33,7 +33,8 @@ case_inner_dim_xy = [s_beam_dim.x, s_beam_dim.y] + repeat(2*cell_to_case_gap_xy,
 case_inner_dim_z = s_beam_dim.z + 2*cell_to_case_gap_z;
 
 case_outer_dim_xy = case_inner_dim_xy + repeat(2*case_wall, 2);
-gasket_thickness = 1.25; //TODO
+gasket_thickness = 1.25;
+pcb_to_battery_spacing = 4;
 
 cell_holder_width = 10;
 
@@ -43,10 +44,54 @@ render_spacing = 100;
 
 //used to get section views. Use only false or $preview. This way the render is unaffected.
 show_only_left_half = false;//$preview;
-show_only_front_half = $preview;
+show_only_front_half = false;//$preview;
 show_only_right_half = false;//$preview;
 
+
+//Config for the window that get's inserted to protect the screen. I cut mine out of an empty 3d printing filament spool which is PC material
+//for a flat one the variables and module "pcb_display_window" have to be slightly changed
+
+//sets how many mm the window will side below the outside surface of the lid
+window_inset = 0.9;
+window_dim = [33, 24.25, 6]; //with a curved window, this is measured when the window is sitting on a flat surface, from the surface to the top most point
+window_radius = 58;
+//Vector for defining for x and y material to leave besides the window, the higher the number the less you'll see on the display later (worse viewing angle)
+//z is just there for making the cutout
+window_border = [1.5, 0.5, -case_wall];
+window_holder_wall = s4_walls;
+//leave some space for glueing it in
+window_slop = 0.4;
+
+//prevents pressure on the case to effect the display
+display_to_window_dist = 1.2;
+
+lid_to_display_dist = window_dim.z - case_wall + window_inset + display_to_window_dist;
+
+lid_internal_height = lid_to_display_dist + pcb_dim.z + pcb_to_battery_spacing + battery_dim.z;
+
+//transform of the pcb relativ to BOTTOM of lid
+pcb_transform_matrix = up(lid_internal_height + gasket_thickness - lid_to_display_dist) * zrot(90);
+
 *screw_and_water_test();
+*lid_seal();
+*lid_test();
+
+//material saving test for screw hole position and display 
+module lid_test(only_screen = false) part("tests/pcb_screws.stl"){
+    intersection(){
+        diff(){
+            pcb_screws();
+            pcb_display_window(include_window = true);
+            pcb_button_holes();
+            pcb_dev_board_pushers();
+            up(lid_to_display_dist) multmatrix(pcb_transform_matrix)
+                //flipped upside to to have fance teardrop rounding for a test part ...
+                cuboid([60, 80, case_wall], rounding = case_rounding, edges = [BOTTOM, "Z"], teardrop=true, anchor = TOP, orient=DOWN);
+        }
+        if(only_screen)
+            multmatrix(pcb_transform_matrix) move(pcb_display_pos) left(3) cube([50, 30, 30], anchor = CENTER);
+    }
+}
 
 //When rendering in OpenSCAD, explode the parts sideways up to be able to differentiate them.
 //final export is done through partsScad, and during that the exploding is deactivated
@@ -62,16 +107,17 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
         lid(anchor = BOTTOM);
 
     if($preview)
-        up(lid_internal_height + gasket_thickness) pcb(spin = 90, anchor = TOP)
+        %multmatrix(pcb_transform_matrix) pcb(anchor = TOP)
             attach(BOTTOM, TOP)
-                %fwd(10) battery(spin = -90);
+                fwd(8) up(pcb_to_battery_spacing)
+                    battery(spin = -90);
     
     //representation of the screws
-    %up(eps)
+    *%up(eps)
         case_clamping_screws(lower = false, upper = false, screw = true);
 
     //representation of the loadcell with all connected hardware
-    %down(cell_to_case_gap_z + s_beam_dim.z/2)
+    *%down(cell_to_case_gap_z + s_beam_dim.z/2)
         load_cell(show_s_beam = true);
 
 }
@@ -104,6 +150,50 @@ module cell_holder() part("cell_holder.stl") recolor("white"){
     }
 }
 
+module pcb_display_window(include_window = false){
+    module window(cutter=false){
+        intersection(){
+                cube(window_dim + (cutter ? 2*repeat(window_slop, 3) : [0, 0, 0]), anchor = BOTTOM);
+                up(window_dim.z) 
+                    if(cutter)
+                        cyl(window_dim.x + (cutter ? 2*window_slop : 0), d=window_radius, anchor = RIGHT, orient = LEFT);
+                    else
+                        tube(window_dim.x + (cutter ? 2*window_slop : 0), od=window_radius, wall = 2.95, anchor = RIGHT, orient = LEFT);
+            }
+    }
+    
+    multmatrix(pcb_transform_matrix) move(pcb_display_pos) up(display_to_window_dist){
+        cube(window_dim + 2*[window_holder_wall, window_holder_wall, 0], anchor = BOTTOM);
+        if(include_window)
+            %window();
+        tag("remove"){
+            window(cutter=true);
+            cube(window_dim - 2*window_border, anchor = BOTTOM);
+        }
+    }
+}
+
+module pcb_button_holes(){
+    multmatrix(pcb_transform_matrix)
+        tag("remove") for(p = pcb_button_positions)
+            move(p) cyl(10, d=10.5, anchor = BOTTOM);
+}
+
+module pcb_dev_board_pushers(){
+    multmatrix(pcb_transform_matrix){
+        ycopies(spacing = -9*2.54, n = 2, sp = 0)
+            move([-pcb_dim.x/2 + 5.5, -pcb_dim.y/2 + 28.5, lid_to_display_dist]) cube([9, s4_walls, lid_to_display_dist + 3.5], anchor = TOP + LEFT);
+        move([pcb_dim.x/2 - 0.5, -pcb_dim.y/2 + 17, lid_to_display_dist]) cuboid([2.5, 14, lid_to_display_dist + 5.2], anchor = TOP);
+    }
+}
+
+module lid_seal(){
+    seal_width = 3;
+    seal_corner_chamfer = 10;
+    force_tag("lid_seal") up(5) scale([1, 1, -2]) roof()
+        diff() rect(case_inner_dim_xy + 2*repeat(seal_width, 2), anchor = CENTER, chamfer = seal_corner_chamfer)
+            tag("remove")rect(case_inner_dim_xy - 2*repeat(seal_width, 2), anchor = CENTER, chamfer = seal_corner_chamfer - seal_width);
+}
 
 //For M3 nut insert
 
@@ -154,6 +244,49 @@ module case_clamping_screws(positive = true, negative = true, upper = false, low
         );
 }
 
+pcb_screw = screw_info(str("M2,", 12), head = "socket", drive="hex", shaft_oversize = 0.85, head_oversize = 0.85, thread="none");
+pcb_nut = nut_info("M2", shape = "hex", thickness = 1.4);
+pcb_screw_hole_wall = 1.6; 
+
+
+module pcb_screws(){
+    //protrudes slightly in the lid on purpose, because of the angle they are at.
+    total_tube_height = lid_to_display_dist - pcb_hole_z_offset + case_wall/2;
+    screw_bite = 10.3;
+
+    //Screws in order (in coordinate system of case): BACK + LEFT, FRONT + RIGHT, BACK + RIGHT, FRONT + LEFT
+    z_rotations = [180, 0, 90, -90];
+    outwards_tilt = -10;
+    chamfer_angle = 81;
+    x_rotations = [0, outwards_tilt, outwards_tilt, 0];
+    screw_bites = [screw_bite, screw_bite, screw_bite, 8.5];
+    chamfer_angles = [chamfer_angle, chamfer_angle, chamfer_angle, 78];
+
+    multmatrix(pcb_transform_matrix) for(i = idx(pcb_screw_holes)){
+        move(pcb_screw_holes[i]){
+            down(0.2) mirror(UP) rotate(-45 + z_rotations[i]) xrot(x_rotations[i]){
+                screw_point(
+                    pcb_screw, pcb_nut,
+                    nut_insert_wall = pcb_screw_hole_wall,
+                    screw_bite = screw_bites[i],
+                    tube_extra_length = total_tube_height - screw_bites[i],
+                    screw_hole_extra_length = 5,
+                    nut_slot_z_clearance = 1,
+                    bridge_helper_width = s2_walls/2,
+                    bridge_helper_height = 0.6,
+                    rounding2 = 0,
+                    chamfer = 0,
+                    lower = true,
+                    screw = true,
+                    keep_tag="pcb_screw"
+                ) chamfer_cylinder_mask(d = $tube_od, chamfer = 1.3, ang = chamfer_angles[i]);
+            }
+            tag("remove")
+                cyl(2, d=6, anchor = TOP);
+        }
+     }
+}
+
 //the arguments for chamfer go to a cube on the bottom of the tube, so any edges which don't include BOTTOM probably include weird results
 module screw_point(
     screw_info, nut_info, //screw/nut specs resulting from screw_info() and nut_info(), for the hardware you want to use
@@ -174,7 +307,8 @@ module screw_point(
     tube_extra_length = 9,
     screw_hole_extra_length = 4,
     use_nut_side_trap = true, //decides if there is a slot in the side to insert the nut
-    remove_tag = "remove"
+    remove_tag = "remove",
+    keep_tag = "keep"
 ){
     screw_hole_dia = struct_val(screw_info, "diameter") + struct_val(screw_info, "shaft_oversize");
     $tube_od = struct_val(nut_info, "width") + 2*nut_insert_wall;
@@ -183,6 +317,7 @@ module screw_point(
     nut_trap_height = struct_val(nut_info, "thickness") + nut_slot_z_clearance + bridge_helper_height;
 
     module lower_negative(){
+        //bottom_half() //makes the screw holes only remove in the lower part, but hangs up preview
         down(screw_bite){
             down(screw_hole_extra_length)
                 screw_hole(screw_info, length = struct_val(screw_info, "length") + screw_hole_extra_length, counterbore=head_counterbore_length, anchor=BOTTOM);
@@ -198,6 +333,7 @@ module screw_point(
     }
 
     module upper_negative(){
+        //top_half() //makes the screw holes only remove in the upper part, but hangs up preview
         down(screw_bite)
             screw_hole(screw_info , counterbore=head_counterbore_length,anchor=BOTTOM);
     }
@@ -207,13 +343,13 @@ module screw_point(
         if(screw)
             %recolor("grey") down(screw_bite) screw(screw_info, anchor = BOTTOM);
         if(upper)
-            tag("keep") difference(){
+            tag(keep_tag) difference(){
                 //cyl is used upside down, so the teardrop has an effect
                 cyl(upper_tube_height, d=$tube_od, anchor = TOP, orient=DOWN, rounding1 = rounding2, teardrop = teardrop2);
                 upper_negative();
             }
         //all the geometry needed to support the nut and screw hole
-        if(lower) tag("keep"){
+        if(lower) tag(keep_tag){
             intersection(){
                 union(){
                     difference(){
@@ -221,7 +357,7 @@ module screw_point(
                         lower_negative();
                     }
                     //Bridge helpers, makes two thin slabs to convince the slicer to do nice bridging
-                    down(screw_bite - nut_trap_height - nut_slot_z_clearance - 2*nut_slop)
+                    down(screw_bite - nut_trap_height + nut_slot_z_clearance - 2*nut_slop)
                         mirror_copy(BACK, offset = -screw_hole_dia/2)
                             cube([struct_val(nut_info, "width")+ 2*nut_slop, bridge_helper_width + 2*nut_slop, bridge_helper_height], anchor = TOP + BACK);
                 }
@@ -266,20 +402,14 @@ module screw_and_water_test(){
 }
 
 
-lid_internal_height = 15; //TODO derive from the space, the electronics take up
-
-
 module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlue") render() maybe_right_half() maybe_left_half() maybe_front_half(){
     anchors = [
         named_anchor("LID_INTERNAL", [0, 0, 0])
     ];
 
     attachable(anchor, spin, orient, size = concat(case_outer_dim_xy, lid_internal_height + case_wall)){
-        union(){
-            position(BOTTOM) top_half(s=200)
-                case_all(anchor = "TOP_HALF_BOTTOM");
-            
-        }
+        position(BOTTOM) top_half(s=200)
+            case_all(anchor = "TOP_HALF_BOTTOM");
         children();
     }
 }
@@ -355,20 +485,27 @@ module case_all(anchor = CENTER, spin = 0, orient = UP){
                 //stoppers for the cell_holders
                 tag("keep") zrot_copies(n = 2) position(RIGHT + FRONT) move([-case_wall - cutout_to_edge - cutout_width, case_wall])
                     cuboid([case_wall, cell_holder_width , case_inner_dim_z], anchor = LEFT + FRONT + TOP);
+                //generates geometry to add and remove to attach case and lid together with screws
                 case_clamping_screws(lower = true, upper = true);
-                //this on adds and removes //TODO buggy
+                //adding all parts in the lid connected with the pcb
+                pcb_screws();
+                pcb_display_window();
+                pcb_button_holes();
+                pcb_dev_board_pushers();
+                lid_seal();
+                //this on adds and removes all parts needed for the cable channel
                 position(FRONT) back(case_wall){
                     case_buldge();
                     tag("remove") case_buldge(diff = true);
                 }
-                //holes for the letting the nuts exit the case
+                //holes for the letting the loadcell nuts exit the case
                 //will be sealed with hot glue
                 tag("remove") mirror_copy(RIGHT) position(LEFT)
                     cube([case_wall, case_nut_cutout_width_dia, case_inner_dim_z/2], anchor = LEFT + TOP)
                         position(BOTTOM)
                             cyl(case_wall, d=case_nut_cutout_width_dia, orient = LEFT);
             }
-            //doing the teardrop manual to be able to do top and bottom
+            //doing the teardrop rounding of the case manual to be able to do top and bottom with teardrop
             edge_mask([TOP, BOTTOM])
                 teardrop_edge_mask(max($parent_size) + 1, r = case_rounding);
             corner_mask([TOP, BOTTOM])
