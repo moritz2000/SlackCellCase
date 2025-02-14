@@ -7,70 +7,7 @@ include <loadCell.scad>
 include <pcb.scad>
 include <battery.scad>
 
-
-$fa = $preview ? 10 : 1;
-$fs = $preview ? 1 : 0.25;
-
-
-//ignore message about changes in BOSL api
-$align_msg = false;
-
-cell_to_case_gap_xy = 3.5;
-cell_to_case_gap_z = 2;
-
-//slicer specific settings for all parts except the gasket
-layer_height = 0.3;
-//Recommended wall thickness from slicer
-//With Prusa Slicer, read them of in Print Settings -> Layer and Perimeters -> Vertical Shells
-s2_walls = 1.14;
-s4_walls = 2.21;
-s6_walls = 3.28;
-
-case_wall = s6_walls;
-case_rounding = case_wall;
-
-case_inner_dim_xy = [s_beam_dim.x, s_beam_dim.y] + repeat(2*cell_to_case_gap_xy, 2);
-case_inner_dim_z = s_beam_dim.z + 2*cell_to_case_gap_z;
-
-case_outer_dim_xy = case_inner_dim_xy + repeat(2*case_wall, 2);
-gasket_thickness = 1.25;
-pcb_to_battery_spacing = 4;
-
-cell_holder_width = 10;
-
-cell_holder_rounding = case_rounding - case_wall;
-
-render_spacing = 100;
-
-//used to get section views. Use only false or $preview. This way the render is unaffected.
-show_only_left_half = false;//$preview;
-show_only_front_half = false;//$preview;
-show_only_right_half = false;//$preview;
-
-
-//Config for the window that get's inserted to protect the screen. I cut mine out of an empty 3d printing filament spool which is PC material
-//for a flat one the variables and module "pcb_display_window" have to be slightly changed
-
-//sets how many mm the window will side below the outside surface of the lid
-window_inset = 0.9;
-window_dim = [33, 24.25, 6]; //with a curved window, this is measured when the window is sitting on a flat surface, from the surface to the top most point
-window_radius = 58;
-//Vector for defining for x and y material to leave besides the window, the higher the number the less you'll see on the display later (worse viewing angle)
-//z is just there for making the cutout
-window_border = [1.5, 0.5, -case_wall];
-window_holder_wall = s4_walls;
-//leave some space for glueing it in
-window_slop = 0.4;
-
-//prevents pressure on the case to effect the display
-display_to_window_dist = 1.2;
-
-lid_to_display_dist = window_dim.z - case_wall + window_inset + display_to_window_dist;
-
-lid_internal_height = lid_to_display_dist + pcb_dim.z + pcb_to_battery_spacing + battery_dim.z;
-
-//transform of the pcb relativ to BOTTOM of lid
-pcb_transform_matrix = up(lid_internal_height + gasket_thickness - lid_to_display_dist) * zrot(90);
+include <config.scad>
 
 *screw_and_water_test();
 *lid_seal();
@@ -117,24 +54,18 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
         case_clamping_screws(lower = false, upper = false, screw = true);
 
     //representation of the loadcell with all connected hardware
-    *%down(cell_to_case_gap_z + s_beam_dim.z/2)
+    %down(cell_to_case_gap_z + loadcell_dim.z/2)
         load_cell(show_s_beam = true);
 
 }
 
 //corner piece which allows the loadcell to move while being inside the housing
 module cell_holders(anchor = CENTER, spin = 0, orient = UP) {
-    /*attachable(anchor, spin, orient, size = concat(case_inner_dim_xy, [case_inner_dim_z])){
-        union(){
-            mirror_copy(v=RIGHT, offset = case_inner_dim_xy.x/2)
-            mirror_copy(v=BACK, offset = case_inner_dim_xy.y/2)
-                cell_holder();
-        }
-        children();
-    }*/
-    attachable(anchor, spin, orient, size = [case_inner_dim_xy.x - 2*cutout_to_edge - 2*cutout_width, case_inner_dim_xy.y, case_inner_dim_z]){
+    attachable(anchor, spin, orient, size = [case_inner_dim_xy.x - 2*loadcell_cutout_to_edge - 2*loadcell_cutout_width, case_inner_dim_xy.y, case_inner_dim_z]){
         zrot_copies(n=2){
-            move([s_beam_dim.x/2 - cutout_width - cutout_to_edge, -s_beam_dim.y/2] + [cell_to_case_gap_xy, -cell_to_case_gap_xy]) rotate(-90) cell_holder();
+            move([loadcell_dim.x/2 - loadcell_cutout_to_edge -loadcell_cutout_width , -loadcell_dim.y/2] + [cell_to_case_gap_xy, -cell_to_case_gap_xy]) 
+                mirror_copy(RIGHT, cp = [loadcell_cutout_width/2 - cell_to_case_gap_xy, 0, 0]) rotate(-90)
+                    cell_holder();
         }
         children();
     }
@@ -142,9 +73,9 @@ module cell_holders(anchor = CENTER, spin = 0, orient = UP) {
 
 module cell_holder() part("cell_holder.stl") recolor("white"){
     difference(){
-            cuboid( [cell_holder_width, cell_holder_width , case_inner_dim_z],
-                    rounding = cell_holder_rounding, edges = BACK + RIGHT,
-                    anchor = RIGHT + BACK);
+        cuboid( [cell_holder_width, cell_holder_width , case_inner_dim_z], anchor = RIGHT + BACK);
+        //Using the reference of the loadcell to make a perfectly fitting cutout in the holder.
+        //And because it is printed out of TPU it doesn't need tolerances.
         translate([-case_inner_dim_xy.x/2, -case_inner_dim_xy.y/2])
             load_cell(screw_ons=false);
     }
@@ -190,7 +121,7 @@ module pcb_dev_board_pushers(){
 module lid_seal(){
     seal_width = 3;
     seal_corner_chamfer = 10;
-    force_tag("lid_seal") up(5) scale([1, 1, -2]) roof()
+    force_tag("lid_seal") up(10) scale([1, 1, -2]) roof()
         diff() rect(case_inner_dim_xy + 2*repeat(seal_width, 2), anchor = CENTER, chamfer = seal_corner_chamfer)
             tag("remove")rect(case_inner_dim_xy - 2*repeat(seal_width, 2), anchor = CENTER, chamfer = seal_corner_chamfer - seal_width);
 }
@@ -436,9 +367,10 @@ module case(anchor = TOP, spin=0, orient=UP) part("case.stl") recolor("FireBrick
     }
 }
 
-case_buldge_height = cable_dia + 2*case_wall + cell_to_case_gap_z;//load_cell_cable_nut_width + 12 + 2*case_wall;
+case_buldge_gap = 1.75;
+case_buldge_height = loadcell_cable_dia + 2*case_wall + cell_to_case_gap_z;//loadcell_cable_nut_width + 12 + 2*case_wall;
 case_bulge_z_offset = 1.5;
-case_buldge_outer_dia = cable_bend + load_cell_cable_nut_width/2 + case_wall * 2 + cell_to_case_gap_xy;
+case_buldge_outer_dia = loadcell_cable_bend + loadcell_cable_nut_width/2 + 2*case_wall + 2*case_buldge_gap;
 case_buldge_straight_length = 5;
 
 straight_cable_channel_dim = [case_buldge_outer_dia, case_buldge_straight_length, case_buldge_height/2];
@@ -450,13 +382,13 @@ module case_buldge(diff = false){
         hull()
             front_half() back(cell_to_case_gap_xy){
                 down(cell_to_case_gap_z) 
-                    load_cell_cable();
-                //this cylinder expands the one side, through the hull to create a better iterface between case, lid and gasket
-                up(gasket_thickness) right(load_cell_cable_nut_width/2)
+                    loadcell_cable();
+                //this cylinder expands the one side, through the hull to create a better interface between case, lid and gasket
+                up(gasket_thickness) right(loadcell_cable_nut_width/2)
                     cyl(2*case_wall, d= case_wall, anchor = BOTTOM + RIGHT, orient = FRONT);
             }
         //for the part that is diffed away later, the minkowski is made with a smaller sphere
-        front_half() sphere(r=(diff ? 0 : case_wall) + cell_to_case_gap_xy/2);
+        front_half() sphere(r=(diff ? 0 : case_wall) + case_buldge_gap);
     }
 }
 
@@ -483,8 +415,11 @@ module case_all(anchor = CENTER, spin = 0, orient = UP){
             //take the plane between bottom part and gasket as reference
             up(base_top_z){
                 //stoppers for the cell_holders
-                tag("keep") zrot_copies(n = 2) position(RIGHT + FRONT) move([-case_wall - cutout_to_edge - cutout_width, case_wall])
-                    cuboid([case_wall, cell_holder_width , case_inner_dim_z], anchor = LEFT + FRONT + TOP);
+                stopper_width = loadcell_cutout_width - 2*cell_to_case_gap_xy - case_cell_holder_stoppers_gap*2;
+                echo(stopper_width)
+                tag("keep") zrot_copies(n = 2) position(RIGHT + FRONT) move([-case_wall - cell_to_case_gap_xy - loadcell_cutout_to_edge - loadcell_cutout_width/2, case_wall])
+                    //the chamfer makes inserting the loadcell in the case easier, even if you only do it once, chafers cost nothing ¯\_(ツ)_/¯
+                    cuboid([stopper_width, cell_holder_width , case_inner_dim_z], chamfer = stopper_width/2, edges = [TOP + LEFT, TOP + RIGHT], anchor = FRONT + TOP);
                 //generates geometry to add and remove to attach case and lid together with screws
                 case_clamping_screws(lower = true, upper = true);
                 //adding all parts in the lid connected with the pcb
