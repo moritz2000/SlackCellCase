@@ -1,5 +1,6 @@
 include <BOSL2/std.scad>
 include <BOSL2/screws.scad>
+include <BOSL2/rounding.scad>
 
 include <partsScad/partsScad.scad>
 
@@ -8,6 +9,7 @@ include <pcb.scad>
 include <battery.scad>
 
 include <config.scad>
+include <usb_hole_plug.scad>
 
 *screw_and_water_test();
 *lid_seal();
@@ -228,7 +230,7 @@ module screw_point(
     chamfer = case_screw_chamfer,
     edges = [BOTTOM + BACK, BOTTOM + FRONT], except_edges = [],
     rounding1 = 0, teardrop1 = true, //parameters for rounding the bottom of the lower cylinder
-    rounding2 = case_rounding, teardrop2 = true, //parameters for rounding the top of the upper cylinder
+    rounding2 = case_screw_rounding, teardrop2 = true, //parameters for rounding the top of the upper cylinder
     screw_bite = 9, //how many mm should the screw be into the threaded insert
     nut_insert_wall = case_wall, //wall thickness around the nut (not completely correct when shape is hex)
     nut_slot_z_clearance = 0.8, //makes the nut slot higher, for easy fit
@@ -242,7 +244,8 @@ module screw_point(
     keep_tag = "keep"
 ){
     screw_hole_dia = struct_val(screw_info, "diameter") + struct_val(screw_info, "shaft_oversize");
-    $tube_od = struct_val(nut_info, "width") + 2*nut_insert_wall;
+//    $tube_od = struct_val(nut_info, "width") + 2*nut_insert_wall;
+    $tube_od = struct_val(screw_info, "head_size") + struct_val(screw_info, "head_oversize") + 2*nut_insert_wall;
     upper_tube_height = struct_val(screw_info, "length") - screw_bite + struct_val(screw_info, "head_height");
     lower_height = screw_bite + tube_extra_length;
     nut_trap_height = struct_val(nut_info, "thickness") + nut_slot_z_clearance + bridge_helper_height;
@@ -311,22 +314,84 @@ module screw_point(
     children();
 }
 
+seam_lip_width = s2_walls;
+//space which will be between the lip and the fitting part
+seam_lip_slop = 0.5;
+
 module screw_and_water_test(){
     size = 26;
+
+    z_overlap = 1.5;
+    lip_height = gasket_thickness;
+    lip_height_with_overlap = z_overlap + gasket_thickness;
+
+    /*module fill_small_holes(r){
+        offset(r = r) offset(r = -r) children();
+    }*/
+
+    module interface_2d(){
+        projection(cut = true) down(eps) top_part();
+    }
+
+    module lip_3d(){
+        module seam_lip(width, slop = 0){
+            difference(){
+                offset(r = width + slop) children();
+                offset(r = slop) fill() children();
+            }
+        }
+
+        //the part of the lip that sticks out
+        down(lip_height)
+            linear_extrude(height=lip_height)
+                seam_lip(seam_lip_width, seam_lip_slop)
+                    children();
+        //the part of the lip that is next to the original part
+        linear_extrude(height=z_overlap)
+                seam_lip(seam_lip_width + seam_lip_slop)
+                    children();
+        //generate a chamfer
+        up(z_overlap) linear_extrude(2.5, scale = 0.85) seam_lip(seam_lip_width, seam_lip_slop) children();
+    }
+
+    module mold_part(){
+        module mold_2d(){
+            difference() {
+                rect(size - 2*case_wall);
+                interface_2d();
+            }
+        }
+        
+        linear_extrude(lip_height) mold_2d();
+        up(lip_height) bottom_half(z = 3*layer_height) roof() mold_2d();
+    }
 
     ydistribute(spacing = size + 5){
         part("tests/water_and_screw_PETG.stl") xdistribute(spacing = size + 5){
             bottom_half() cuby();
             down(gasket_thickness) //just to align it for printing
-                xrot(180) top_half() down(gasket_thickness) cuby();
+                xrot(180){
+                    lip_3d()
+                        interface_2d();
+                    top_part();
+                }
         }
+
+        part("tests/water_and_screw_mold_PETG.stl") mold_part();
 
         part("tests/water_and_screw_TPU.stl") bottom_half() down(gasket_thickness) top_half() cuby();
     }
 
+    module top_part(){
+        top_half() down(gasket_thickness) cuby();
+    }
+
     module cuby(){
         diff() rect_tube(size - 2* case_wall, size = [size, size], wall = case_wall, rounding = case_rounding, anchor = CENTER){
-            mirror_copy(BACK, offset=$parent_size.y/2) screw_point(case_screw, case_nut, lower = true, upper = true, screw = false, edges = BOTTOM + BACK);
+            mirror_copy(BACK, offset=$parent_size.y/2) screw_point(case_screw, case_nut, tube_extra_length = 4, screw_hole_extra_length = 2, lower = true, upper = true, screw = false, edges = BOTTOM + BACK)
+                //ensure wall thickness
+                up(gasket_thickness)
+                    pie_slice(size/2 - case_wall - gasket_thickness, d=$tube_od, ang = 180, anchor = BOTTOM, spin = 180);
             attach([TOP, BOTTOM], TOP) cuboid([size, size, case_wall], rounding = case_rounding, teardrop = true, edges = ["Z", BOTTOM]);
         }
     }
@@ -418,7 +483,7 @@ module case_all(anchor = CENTER, spin = 0, orient = UP){
                 stopper_width = loadcell_cutout_width - 2*cell_to_case_gap_xy - case_cell_holder_stoppers_gap*2;
                 echo(stopper_width)
                 tag("keep") zrot_copies(n = 2) position(RIGHT + FRONT) move([-case_wall - cell_to_case_gap_xy - loadcell_cutout_to_edge - loadcell_cutout_width/2, case_wall])
-                    //the chamfer makes inserting the loadcell in the case easier, even if you only do it once, chafers cost nothing ¯\_(ツ)_/¯
+                    //the chamfer makes inserting the loadcell in the case easier, even if you only do it once, chamfers cost nothing ¯\_(ツ)_/¯
                     cuboid([stopper_width, cell_holder_width , case_inner_dim_z], chamfer = stopper_width/2, edges = [TOP + LEFT, TOP + RIGHT], anchor = FRONT + TOP);
                 //generates geometry to add and remove to attach case and lid together with screws
                 case_clamping_screws(lower = true, upper = true);
@@ -428,6 +493,8 @@ module case_all(anchor = CENTER, spin = 0, orient = UP){
                 pcb_button_holes();
                 pcb_dev_board_pushers();
                 lid_seal();
+                multmatrix(pcb_transform_matrix) move(pcb_usb_position) rotate(-90)
+                    usb_c_covered_hole(anchor = BACK);
                 //this on adds and removes all parts needed for the cable channel
                 position(FRONT) back(case_wall){
                     case_buldge();

@@ -1,4 +1,10 @@
 include <BOSL2/std.scad>
+
+//these includes are made to base some dimensions on the variables in them
+include <loadCell.scad>
+include <pcb.scad>
+include <battery.scad>
+
 //ignore message about changes in BOSL api
 $align_msg = false;
 
@@ -37,6 +43,8 @@ cell_to_case_gap_z = 2;
 //minimum wall thickness in xy and z
 case_wall = s6_walls;
 case_rounding = case_wall;
+case_screw_rounding = 2;
+
 
 gasket_thickness = 1.25;
 pcb_to_battery_spacing = 4;

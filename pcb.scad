@@ -50,6 +50,9 @@ pcb_button_positions = line_copies(
     p=[0,pcb_button_y_offset,pcb_button_z_offset] //y and z position of all buttons relative to TOP of pcb assembly
 );
 
+//Center point of the plug side of the usb relative to TOP of the pcb assembly
+pcb_usb_position = [-pcb_dim.x/2 -0.5, -pcb_dim.y/2 + 18, -3.95];
+
 
 
 
@@ -85,8 +88,10 @@ module pcb(anchor = CENTER, spin = 0, orient = UP){
 
                 move([27.55, 65.7, 0]) zrot(-90) color("darkgreen") import("GrabCad/HX711/HX711_simple.stl");
             }
-            position(TOP)
+            position(TOP){
                 pcb_button_board();
+                move(pcb_usb_position) cyl(6.6, d=15, anchor = BOTTOM, orient = LEFT);
+            }
         }
         children();
     }
