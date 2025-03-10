@@ -10,6 +10,7 @@ include <battery.scad>
 
 include <config.scad>
 include <usb_hole_plug.scad>
+include <libs/stl_modifier.scad>
 
 *screw_and_water_test();
 *lid_seal();
@@ -442,7 +443,7 @@ module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlu
                         //cutting away the bottom part
                         back(eps) up(gasket_thickness) cuboid([80, case_buldge_outer_dia, 40], anchor = TOP + BACK);
                     }
-                    back(eps) tag("remove") case_buldge(diff = true);
+                    move([0, eps, -eps]) case_buldge(diff = true);
                 }
             }
         }
@@ -487,9 +488,7 @@ module case(anchor = TOP, spin=0, orient=UP) part("case.stl") recolor("FireBrick
                         //cutting away the top part
                         back(eps) cuboid([80, case_buldge_outer_dia, 15], anchor = BOTTOM + BACK);
                     }
-                    back(eps) tag("remove"){
-                        case_buldge(diff = true);
-                    }
+                    move([0, eps, eps]) case_buldge(diff = true);
                 }
 
                 //holes for the letting the loadcell nuts exit the case
@@ -512,16 +511,21 @@ case_buldge_straight_length = 5;
 
 straight_cable_channel_dim = [case_buldge_outer_dia, case_buldge_straight_length, case_buldge_height/2];
 
-//has to be positionend at FRONT + TOP of case
+//has to be positioned at FRONT + TOP of case
 //this takes the cable of the load cell as reference and creates a channel for it
 module case_buldge(diff = false){
+    force_tag(diff ? "remove" : "buldge") enlarge(gasket_thickness, direction = UP, symmetric = false)
     minkowski(){
         hull()
             front_half() back(cell_to_case_gap_xy){
-                down(cell_to_case_gap_z) 
+                //By splitting up the loadcell_cable in top and bottom, the same overall dimension can be kept,
+                //while creating a straight part for the gasket.
+                bottom_half() down(cell_to_case_gap_z) 
+                    loadcell_cable();
+                down(gasket_thickness) top_half(z=gasket_thickness) down(cell_to_case_gap_z) 
                     loadcell_cable();
                 //this cylinder expands the one side, through the hull to create a better interface between case, lid and gasket
-                up(gasket_thickness) right(loadcell_cable_nut_width/2)
+                right(loadcell_cable_nut_width/2)
                     cyl(2*case_wall, d= case_wall, anchor = BOTTOM + RIGHT, orient = FRONT);
             }
         //for the part that is diffed away later, the minkowski is made with a smaller sphere
