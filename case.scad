@@ -85,14 +85,15 @@ module cell_holder() part("cell_holder.stl") recolor("white"){
 
 module pcb_display_window(include_window = false){
     module window(cutter=false){
-        intersection(){
-                cube(window_dim + (cutter ? 2*repeat(window_slop, 3) : [0, 0, 0]), anchor = BOTTOM);
-                up(window_dim.z) 
-                    if(cutter)
-                        cyl(window_dim.x + (cutter ? 2*window_slop : 0), d=window_radius, anchor = RIGHT, orient = LEFT);
-                    else
-                        tube(window_dim.x + (cutter ? 2*window_slop : 0), od=window_radius, wall = 2.95, anchor = RIGHT, orient = LEFT);
-            }
+        //execute intersection in 3d to generate less objects in CSG Tree
+        frame_map(z=[1, 0, 0], y=[0, 0, 1]) linear_extrude(window_dim.x + (cutter ? 2*window_slop : 0), center = true) intersection(){
+            square([window_dim.y, window_dim.z] + (cutter ? 2*repeat(window_slop, 2) : [0, 0]), anchor = FRONT);
+            back(window_dim.z)
+                if(cutter)
+                    circle(d=window_radius, anchor = BACK);
+                else
+                    ring(d2=window_radius, d1 = window_radius - 2*2.95, anchor = BACK);
+        }
     }
     
     multmatrix(pcb_transform_matrix) move(pcb_display_pos) up(display_to_window_dist){
@@ -145,7 +146,7 @@ cable_screw_position = [-14, -case_outer_dim_xy.y/2 - 6];
 module case_clamping_screws(positive = true, negative = true, upper = false, lower = false, screw = false){
     //wrap the screw_point module into an extra module to be able to change parameters in one point only
     module normal_case_screw(){
-        screw_point(case_screw, case_nut, positive, negative, upper, lower, screw = screw, edges = BOTTOM, except_edges = BOTTOM + LEFT)
+        screw_point(case_screw, case_nut, positive, negative, upper, lower, gap = gasket_thickness, screw = screw, edges = BOTTOM, except_edges = BOTTOM + LEFT)
             children();
     }
     //All corners
@@ -166,6 +167,7 @@ module case_clamping_screws(positive = true, negative = true, upper = false, low
         screw_point(
             // this one takes a M3x20 screw
             struct_set(case_screw, "length", 20), case_nut, positive, negative, upper, lower, screw = screw,
+            gap = gasket_thickness,
             screw_bite = 15,
             use_nut_side_trap = false,
             nut_slot_z_clearance = 3, 
@@ -239,6 +241,7 @@ module screw_point(
     head_counterbore_length = 20, //length of the cutout for the screw head in the upper part
     tube_extra_length = 9,
     screw_hole_extra_length = 4,
+    gap = 0, //gap between lower and upper part. reduces the size of the upper part while keeping the distance between the nut and the screw head the same.
     use_nut_side_trap = true, //decides if there is a slot in the side to insert the nut
     remove_tag = "remove",
     keep_tag = "keep"
@@ -279,7 +282,7 @@ module screw_point(
         if(upper)
             tag(keep_tag) difference(){
                 //cyl is used upside down, so the teardrop has an effect
-                cyl(upper_tube_height, d=$tube_od, anchor = TOP, orient=DOWN, rounding1 = rounding2, teardrop = teardrop2);
+                up(gap) cyl(upper_tube_height - gap, d=$tube_od, anchor = TOP, orient=DOWN, rounding1 = rounding2, teardrop = teardrop2);
                 upper_negative();
             }
         //all the geometry needed to support the nut and screw hole
@@ -397,25 +400,63 @@ module screw_and_water_test(){
     }
 }
 
+module closed_rect_tube(h, size, wall, anchor = CENTER, spin = 0, orient = UP){
+    attachable(anchor, spin, orient, size = concat(size, h)){
+        union(){
+            position(TOP)
+                rect_tube(h - wall, size, wall = wall, rounding = case_wall, anchor = TOP);
+            position(BOTTOM)
+                cuboid(concat(size, wall), rounding = case_rounding, edges = [BOTTOM, "Z"], teardrop = true, anchor = BOTTOM);
+        }
+        children();
+    }
+}
 
-module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlue") render() maybe_right_half() maybe_left_half() maybe_front_half(){
+module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlue"){
     anchors = [
         named_anchor("LID_INTERNAL", [0, 0, 0])
     ];
 
     attachable(anchor, spin, orient, size = concat(case_outer_dim_xy, lid_internal_height + case_wall)){
-        position(BOTTOM) top_half(s=200)
-            case_all(anchor = "TOP_HALF_BOTTOM");
+        diff(){
+            position(BOTTOM)
+                closed_rect_tube($parent_size.z , [$parent_size.x, $parent_size.y], wall = case_wall, anchor = TOP, orient = DOWN);
+            position(BOTTOM) down(gasket_thickness){
+                //generates geometry to add and remove to attach case and lid together with screws
+                case_clamping_screws(upper = true); //TODO make the cylinder shorter, so that it doesn't stick out, but correct it in the module, not extra differencing
+                
+                //adding all parts in the lid connected with the pcb
+                pcb_screws(); //TODO optimize adds 300 objects to the tree
+                pcb_display_window();
+                pcb_button_holes();
+                pcb_dev_board_pushers();
+                lid_seal();
+                *multmatrix(pcb_transform_matrix) move(pcb_usb_position) rotate(-90)
+                    usb_c_covered_hole(anchor = BACK);
+                //this on adds and removes all parts needed for the cable channel
+                position(FRONT) back(case_wall){
+                    render() difference(){
+                        case_buldge(); //TODO: make sure it meets nicely with the case part, now it's offset from the previous printed gasket in between
+                                       //the projection of case and lid should be the same where they meet (disregarding the yet to come lip)
+                                       //just moving it up would solve the meeting face, but make it unnecessarily higher. complication making the internal lid for the big lid
+                        //cutting away the bottom part
+                        back(eps) up(gasket_thickness) cuboid([80, case_buldge_outer_dia, 40], anchor = TOP + BACK);
+                    }
+                    back(eps) tag("remove") case_buldge(diff = true);
+                }
+            }
+        }
         children();
     }
 }
 
-module gasket(anchor = BOTTOM, spin=0, orient=UP) part("gasket.stl") recolor("white") render() maybe_left_half() maybe_front_half(){
+module gasket(anchor = BOTTOM, spin=0, orient=UP) part("gasket.stl") recolor("white"){
     attachable(anchor, spin, orient, size = concat(case_outer_dim_xy, gasket_thickness)){
         union(){
-            //cut out part of case all which should be the gasket
-            position(BOTTOM) bottom_half(z = gasket_thickness, s = 200) top_half(s=200)
-                case_all(anchor = "BASE_TOP");
+            //the gasket should have the same shape as the BOTTOM of the lid, so we just take the shape from there
+            position(BOTTOM)
+                linear_extrude(gasket_thickness) projection(cut=true) down(eps)
+                    lid();
             //add a small feature to connect the isle of gasket for the cable channel to the rest
             move(cable_screw_position)
                 rotate(-50) right(case_wall )
@@ -425,9 +466,40 @@ module gasket(anchor = BOTTOM, spin=0, orient=UP) part("gasket.stl") recolor("wh
     }
 }
 
-module case(anchor = TOP, spin=0, orient=UP) part("case.stl") recolor("FireBrick") render() maybe_left_half() maybe_front_half(){
+module case(anchor = TOP, spin=0, orient=UP) part("case.stl") recolor("FireBrick"){
     attachable(anchor, spin, orient, size = concat(case_outer_dim_xy, case_inner_dim_z + case_wall)){
-        position(TOP) bottom_half(s = 200) case_all(anchor = "BASE_TOP");
+        diff(){
+            closed_rect_tube($parent_size.z, [$parent_size.x, $parent_size.y], case_wall);
+            position(TOP){
+                //generates geometry to add and remove to attach case and lid together with screws
+                case_clamping_screws(lower = true);
+                
+                //stoppers for the cell_holders 
+                stopper_width = loadcell_cutout_width - 2*cell_to_case_gap_xy - case_cell_holder_stoppers_gap*2;
+                tag("keep") zrot_copies(n = 2) position(RIGHT + FRONT) move([-case_wall - cell_to_case_gap_xy - loadcell_cutout_to_edge - loadcell_cutout_width/2, case_wall])
+                    //the chamfer makes inserting the loadcell in the case easier, even if you only do it once, chamfers cost nothing ¯\_(ツ)_/¯
+                    cuboid([stopper_width, cell_holder_width , case_inner_dim_z], chamfer = stopper_width/2, edges = [TOP + LEFT, TOP + RIGHT], anchor = FRONT + TOP);
+                
+                //this on adds and removes all parts needed for the cable channel
+                position(FRONT) back(case_wall){
+                    render() difference(){
+                        case_buldge();
+                        //cutting away the top part
+                        back(eps) cuboid([80, case_buldge_outer_dia, 15], anchor = BOTTOM + BACK);
+                    }
+                    back(eps) tag("remove"){
+                        case_buldge(diff = true);
+                    }
+                }
+
+                //holes for the letting the loadcell nuts exit the case
+                //will be sealed with hot glue
+                tag("remove") mirror_copy(RIGHT) position(LEFT)
+                    move([-eps, 0, eps]) cube([case_wall + 2*eps, case_nut_cutout_width_dia, case_inner_dim_z/2], anchor = LEFT + TOP)
+                        position(BOTTOM)
+                            cyl($parent_size.x, d=case_nut_cutout_width_dia, orient = LEFT);
+            }
+        }
         children();
     }
 }
@@ -460,85 +532,3 @@ module case_buldge(diff = false){
 case_nut_cutout_width_dia = 29;
 
 case_outer_dim = concat(case_outer_dim_xy, case_wall + case_inner_dim_z + gasket_thickness + lid_internal_height + case_wall);
-
-module case_all(anchor = CENTER, spin = 0, orient = UP){
-    base_top_z = -case_outer_dim.z/2 + case_wall + case_inner_dim_z;
-
-    anchors = [
-        named_anchor("BASE_TOP", [0, 0, base_top_z]),
-        named_anchor("TOP_HALF_BOTTOM", [0, 0, base_top_z + gasket_thickness])
-    ];
-
-    attachable(anchor, spin, orient, size = case_outer_dim, anchors = anchors){
-        diff() {
-            tag_diff("cube"){ //first make the hollow cube in an extra diff, so it doesn't annoy us later
-                cuboid(case_outer_dim, rounding = case_rounding, edges = "Z");
-                //big void in the middle
-                tag("remove")
-                    cuboid($parent_size - repeat(2*case_wall, 3));
-            }
-            //take the plane between bottom part and gasket as reference
-            up(base_top_z){
-                //stoppers for the cell_holders
-                stopper_width = loadcell_cutout_width - 2*cell_to_case_gap_xy - case_cell_holder_stoppers_gap*2;
-                echo(stopper_width)
-                tag("keep") zrot_copies(n = 2) position(RIGHT + FRONT) move([-case_wall - cell_to_case_gap_xy - loadcell_cutout_to_edge - loadcell_cutout_width/2, case_wall])
-                    //the chamfer makes inserting the loadcell in the case easier, even if you only do it once, chamfers cost nothing ¯\_(ツ)_/¯
-                    cuboid([stopper_width, cell_holder_width , case_inner_dim_z], chamfer = stopper_width/2, edges = [TOP + LEFT, TOP + RIGHT], anchor = FRONT + TOP);
-                //generates geometry to add and remove to attach case and lid together with screws
-                case_clamping_screws(lower = true, upper = true);
-                //adding all parts in the lid connected with the pcb
-                pcb_screws();
-                pcb_display_window();
-                pcb_button_holes();
-                pcb_dev_board_pushers();
-                lid_seal();
-                multmatrix(pcb_transform_matrix) move(pcb_usb_position) rotate(-90)
-                    usb_c_covered_hole(anchor = BACK);
-                //this on adds and removes all parts needed for the cable channel
-                position(FRONT) back(case_wall){
-                    case_buldge();
-                    tag("remove") case_buldge(diff = true);
-                }
-                //holes for the letting the loadcell nuts exit the case
-                //will be sealed with hot glue
-                tag("remove") mirror_copy(RIGHT) position(LEFT)
-                    cube([case_wall, case_nut_cutout_width_dia, case_inner_dim_z/2], anchor = LEFT + TOP)
-                        position(BOTTOM)
-                            cyl(case_wall, d=case_nut_cutout_width_dia, orient = LEFT);
-            }
-            //doing the teardrop rounding of the case manual to be able to do top and bottom with teardrop
-            edge_mask([TOP, BOTTOM])
-                teardrop_edge_mask(max($parent_size) + 1, r = case_rounding);
-            corner_mask([TOP, BOTTOM])
-                teardrop_corner_mask(r = case_rounding);
-        }
-        children();
-    }
-}
-
-
-//helpers to be able to have nice section views, they need to be used before using the render() function
-module maybe_front_half(s = 150){
-    if(show_only_front_half)
-        front_half(s = s)
-            children();
-    else
-        children();
-}
-
-module maybe_left_half(s = 150){
-    if(show_only_left_half)
-        left_half(s = s)
-            children();
-    else
-        children();
-}
-
-module maybe_right_half(s = 150){
-    if(show_only_right_half)
-        right_half(s = s)
-            children();
-    else
-        children();
-}
