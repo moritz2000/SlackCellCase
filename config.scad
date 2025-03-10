@@ -72,7 +72,7 @@ window_holder_wall = s4_walls;
 window_slop = 0.4;
 
 //prevents pressure on the case to damage the display
-display_to_window_dist = 1.2;
+display_to_window_dist = 0.2; //so small, because window is curved
 
 
 ////////////////////////
