@@ -4,6 +4,7 @@ include <BOSL2/std.scad>
 include <loadCell.scad>
 include <pcb.scad>
 include <battery.scad>
+include <slicer_config.scad>
 
 //ignore message about changes in BOSL api
 $align_msg = false;
@@ -23,15 +24,6 @@ show_only_right_half = false;//$preview;
 
 //separate parts by this amount in x for rendering, for easy inspection
 render_spacing = 100;
-
-//////////////////////////////////////
-//Slicer specific settings for the PETG parts (case and lid)
-layer_height = 0.3;
-//Recommended wall thickness from slicer
-//With Prusa Slicer, read them of in Print Settings -> Layer and Perimeters -> Vertical Shells
-s2_walls = 1.14;
-s4_walls = 2.21;
-s6_walls = 3.28;
 
 /////////////////////////////////////
 //These settings define the dimensions of the case. Some dimensions however are derived from the refernece parts (pcb, loadcell and battery).
@@ -74,6 +66,8 @@ window_slop = 0.4;
 //prevents pressure on the case to damage the display
 display_to_window_dist = 0.2; //so small, because window is curved
 
+//diameter of the holes of the four buttons under the display
+button_hole_dia = 10.4;
 
 ////////////////////////
 //Calculated dimensions:

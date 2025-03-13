@@ -36,6 +36,10 @@ module lid_test(only_screen = false) part("tests/pcb_screws.stl"){
 //When rendering in OpenSCAD, explode the parts sideways up to be able to differentiate them.
 //final export is done through partsScad, and during that the exploding is deactivated
 //More information on how to export this project to distinct stl files: https://web.archive.org/web/20221117221043/https://traverseda.github.io/code/partsScad/index.html
+
+//Views to help see what I am modelling
+//right_half(s=300, x = -41) left_half(s=300, x = 41) //View with short sides cut away
+//back_half(s=300, y = -case_inner_dim_xy.y/2 + eps) front_half(s=300, y = case_inner_dim_xy.y/2 - eps) //View with long sides cut away
 xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacing){
     case(anchor = TOP);
     
@@ -53,7 +57,7 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
                     battery(spin = -90);
     
     //representation of the screws
-    *%up(eps)
+    %up(eps)
         case_clamping_screws(lower = false, upper = false, screw = true);
 
     //representation of the loadcell with all connected hardware
@@ -111,16 +115,9 @@ module pcb_display_window(include_window = false){
 module pcb_button_holes(){
     multmatrix(pcb_transform_matrix)
         tag("remove") for(p = pcb_button_positions)
-            move(p) cyl(10, d=10.5, anchor = BOTTOM);
+            move(p) cyl(10, d=button_hole_dia, anchor = BOTTOM);
 }
 
-module pcb_dev_board_pushers(){
-    multmatrix(pcb_transform_matrix){
-        ycopies(spacing = -9*2.54, n = 2, sp = 0)
-            move([-pcb_dim.x/2 + 5.5, -pcb_dim.y/2 + 28.5, lid_to_display_dist]) cube([9, s4_walls, lid_to_display_dist + 3.5], anchor = TOP + LEFT);
-        move([pcb_dim.x/2 - 0.5, -pcb_dim.y/2 + 17, lid_to_display_dist]) cuboid([2.5, 14, lid_to_display_dist + 5.2], anchor = TOP);
-    }
-}
 
 module lid_seal(){
     seal_width = 3;
@@ -180,48 +177,6 @@ module case_clamping_screws(positive = true, negative = true, upper = false, low
         );
 }
 
-pcb_screw = screw_info(str("M2,", 12), head = "socket", drive="hex", shaft_oversize = 0.85, head_oversize = 0.85, thread="none");
-pcb_nut = nut_info("M2", shape = "hex", thickness = 1.4);
-pcb_screw_hole_wall = 1.6; 
-
-
-module pcb_screws(){
-    //protrudes slightly in the lid on purpose, because of the angle they are at.
-    total_tube_height = lid_to_display_dist - pcb_hole_z_offset + case_wall/2;
-    screw_bite = 10.3;
-
-    //Screws in order (in coordinate system of case): BACK + LEFT, FRONT + RIGHT, BACK + RIGHT, FRONT + LEFT
-    z_rotations = [180, 0, 90, -90];
-    outwards_tilt = -10;
-    chamfer_angle = 81;
-    x_rotations = [0, outwards_tilt, outwards_tilt, 0];
-    screw_bites = [screw_bite, screw_bite, screw_bite, 8.5];
-    chamfer_angles = [chamfer_angle, chamfer_angle, chamfer_angle, 78];
-
-    multmatrix(pcb_transform_matrix) for(i = idx(pcb_screw_holes)){
-        move(pcb_screw_holes[i]){
-            down(0.2) mirror(UP) rotate(-45 + z_rotations[i]) xrot(x_rotations[i]){
-                screw_point(
-                    pcb_screw, pcb_nut,
-                    nut_insert_wall = pcb_screw_hole_wall,
-                    screw_bite = screw_bites[i],
-                    tube_extra_length = total_tube_height - screw_bites[i],
-                    screw_hole_extra_length = 5,
-                    nut_slot_z_clearance = 1,
-                    bridge_helper_width = s2_walls/2,
-                    bridge_helper_height = 0.6,
-                    rounding2 = 0,
-                    chamfer = 0,
-                    lower = true,
-                    screw = true,
-                    keep_tag="pcb_screw"
-                ) chamfer_cylinder_mask(d = $tube_od, chamfer = 1.3, ang = chamfer_angles[i]);
-            }
-            tag("remove")
-                cyl(2, d=6, anchor = TOP);
-        }
-     }
-}
 
 //the arguments for chamfer go to a cube on the bottom of the tube, so any edges which don't include BOTTOM probably include weird results
 module screw_point(
@@ -424,14 +379,14 @@ module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlu
                 closed_rect_tube($parent_size.z , [$parent_size.x, $parent_size.y], wall = case_wall, anchor = TOP, orient = DOWN);
             position(BOTTOM) down(gasket_thickness){
                 //generates geometry to add and remove to attach case and lid together with screws
-                case_clamping_screws(upper = true); //TODO make the cylinder shorter, so that it doesn't stick out, but correct it in the module, not extra differencing
-                
+                case_clamping_screws(upper = true);
+
                 //adding all parts in the lid connected with the pcb
-                pcb_screws(); //TODO optimize adds 300 objects to the tree
+                multmatrix(pcb_transform_matrix)  pcb_screws();
                 pcb_display_window();
                 pcb_button_holes();
-                pcb_dev_board_pushers();
-                lid_seal();
+                multmatrix(pcb_transform_matrix) pcb_dev_board_pushers();
+                *lid_seal();
                 *multmatrix(pcb_transform_matrix) move(pcb_usb_position) rotate(-90)
                     usb_c_covered_hole(anchor = BACK);
                 //this on adds and removes all parts needed for the cable channel

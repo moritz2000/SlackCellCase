@@ -12,6 +12,7 @@
 //grid pcb
 //https://grabcad.com/library/universal_board_50x70mm-1
 include <BOSL2/std.scad>
+include <slicer_config.scad>
 
 //pcb() show_anchors();
 //x and y are the measurements for the grid pcb, not taking into account the few parts that stick out on the edge
@@ -26,13 +27,15 @@ pcb_hole_x_offset = pcb_dim.x/2 - pcb_hole_center_to_edge_dist;
 pcb_hole_y_offset = pcb_dim.y/2 - pcb_hole_center_to_edge_dist;
 pcb_hole_z_offset = -pcb_dim.z + pcb_thickness;
 
+pcb_sd_module_thickness = 1.25;
+
 //positions of the screw holes relative to TOP of pcb()
 pcb_screw_holes = [
     [pcb_hole_x_offset, pcb_hole_y_offset, pcb_hole_z_offset],
     [-pcb_hole_x_offset, -pcb_hole_y_offset, pcb_hole_z_offset],
     [pcb_hole_x_offset, -pcb_hole_y_offset, pcb_hole_z_offset],
     //one of the screw holes is offset, because its the hole of the sd card module and sticks out over the grid pcb hole
-    [-pcb_dim.x/2 + 2, pcb_dim.y/2, pcb_hole_z_offset + 1.25]
+    [-pcb_dim.x/2 + 2, pcb_dim.y/2, pcb_hole_z_offset + pcb_sd_module_thickness]
 ];
 
 //position of the middle top of the screen relative to pcb assembly TOP
@@ -63,10 +66,11 @@ pcb_usb_position = [-pcb_dim.x/2 -0.5, -pcb_dim.y/2 + 18, -3.95];
             move(p) #sphere(d=5);
     }
 
+pcb_display_to_button_z_offset = 5;
 
 //should be placed at TOP of pcb assembly
 module pcb_button_board(){
-    recolor("green") down(5) back(pcb_dim.y/2 - 12.2) cube([52, 19.8, 1.2], anchor = TOP + BACK);
+    recolor("green") down(pcb_display_to_button_z_offset) back(pcb_dim.y/2 - 12.2) cube([52, 19.8, pcb_thickness], anchor = TOP + BACK);
     for(p = pcb_button_positions)
         move(p) recolor("black") cyl(2.8, d=3.2, anchor = TOP)
             attach(BOTTOM, TOP)
@@ -97,3 +101,53 @@ module pcb(anchor = CENTER, spin = 0, orient = UP){
     }
 }
 
+pcb_button_stick_out = 1.2;
+pcb_button_pusher_y_length = 15;
+pcb_pusher_rounding = 3;
+
+module pcb_dev_board_pushers(){
+    //blocks pushing on the "V3" trapezoid
+    ycopies(spacing = -9*2.54, n = 2, sp = 0)
+        move([-pcb_dim.x/2 + 5.5, -pcb_dim.y/2 + 28.5, lid_to_display_dist])
+            cuboid([9, s4_walls, lid_to_display_dist + 3.5], rounding = -pcb_pusher_rounding, edges = TOP, anchor = TOP + LEFT);
+    //block pushing on the pcb antenna
+    move([pcb_dim.x/2 - 0.5, -pcb_dim.y/2 + 17, lid_to_display_dist])
+        cuboid([2.5, 14, lid_to_display_dist + 5.2], rounding = -pcb_pusher_rounding, edges = TOP, anchor = TOP);
+    //block near the heltec
+    move([0, -pcb_dim.y/2, pcb_hole_z_offset])
+        cuboid([13, s6_walls, -pcb_hole_z_offset + lid_to_display_dist], rounding = -pcb_pusher_rounding, edges = TOP,  anchor = BOTTOM + FRONT)
+            position(FRONT + BOTTOM) down(pcb_thickness)
+                //flange to constrain the pcb sideways
+                cuboid([$parent_size.x, s4_walls, pcb_thickness + 2], chamfer = s4_walls, edges = FRONT + TOP, anchor = BACK + BOTTOM);
+    //block near the HX711
+    move([pcb_dim.x/2 - 9, pcb_dim.y/2, pcb_hole_z_offset])
+        cuboid([13, s6_walls, -pcb_hole_z_offset + lid_to_display_dist], rounding = -pcb_pusher_rounding, edges = TOP,  anchor = RIGHT + BOTTOM + BACK)
+            position(BACK + BOTTOM) down(pcb_thickness)
+                //flange to constrain the pcb sideways
+                cuboid([$parent_size.x, s4_walls, pcb_thickness + 2], chamfer = s4_walls, edges = BACK + TOP, anchor = FRONT + BOTTOM);
+    //block on the button pcb
+    mirror_copy(RIGHT) move([-pcb_dim.x/2 - pcb_button_stick_out, pcb_dim.y/2 - 12, -pcb_display_to_button_z_offset - pcb_thickness])
+        cuboid([s4_walls, pcb_button_pusher_y_length, pcb_display_to_button_z_offset + lid_to_display_dist + pcb_thickness], rounding = -pcb_pusher_rounding, edges = TOP, except_edges = TOP + RIGHT,  anchor = RIGHT + BOTTOM + BACK)
+            position(RIGHT + BOTTOM) up(pcb_thickness)
+                //flange to constrain the pcb sideways
+                cuboid([s4_walls, $parent_size.y, pcb_thickness + 2], chamfer = s4_walls, edges = RIGHT + TOP, anchor = LEFT + BOTTOM);
+}
+
+pcb_screw = screw_info(str("M2,", 16), head = "socket", drive="hex", shaft_oversize = 0.85, head_oversize = 0.85, thread="none");
+pcb_nut = nut_info("M2", shape = "hex", thickness = 1.4);
+m2_threaded_insert_hole_dia = 3.3;
+m2_threaded_insert_wall = s6_walls;
+
+
+module pcb_screws(){
+    for(i = idx(pcb_screw_holes)){
+        move([pcb_screw_holes[i].x, pcb_screw_holes[i].y]){
+            //tube for threaded insert
+            up(lid_to_display_dist)
+                tube(6.5, od=m2_threaded_insert_hole_dia + 2*m2_threaded_insert_wall, id = m2_threaded_insert_hole_dia, orounding2 = -pcb_pusher_rounding,  anchor = TOP);
+
+            %down(pcb_dim.z)
+                screw(pcb_screw, anchor = "head_bot", orient = DOWN);
+        }
+     }
+}
