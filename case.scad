@@ -135,7 +135,8 @@ module lid_seal(){
 
 case_screw_chamfer = 6;
 
-case_clamping_middle_offset = case_outer_dim_xy.x/2 - 3;
+case_clamping_screws_edge_offset = 3;
+case_clamping_middle_offset = case_outer_dim_xy.x/2 - case_clamping_screws_edge_offset;
 
 case_screw = screw_info(str("M3,", 16), head = "socket", drive="hex", shaft_oversize = 0.9, head_oversize = 0.85, thread="none");
 case_nut = nut_info("M3", shape = "hex", thickness = 2.2);
@@ -147,14 +148,22 @@ cable_screw_position = [-14, -case_outer_dim_xy.y/2 - 6];
 //at the height of the anchor point is the change between screw hole (above) and threaded insert (below)
 module case_clamping_screws(positive = true, negative = true, upper = false, lower = false, screw = false){
     //wrap the screw_point module into an extra module to be able to change parameters in one point only
-    module normal_case_screw(){
-        screw_point(case_screw, case_nut, positive, negative, upper, lower, gap = gasket_thickness, screw = screw, edges = BOTTOM, except_edges = BOTTOM + LEFT)
+    module normal_case_screw(corner_fillets = false){
+        screw_point(case_screw, case_nut, positive, negative, upper, lower, gap = gasket_thickness, screw = screw, edges = BOTTOM, except_edges = BOTTOM + LEFT){
             children();
+            //add fillets above the screw heads
+            if(upper && negative && corner_fillets) up($upper_tube_height){
+                move([case_clamping_screws_edge_offset, -struct_val(case_screw, "head_size")/2 - struct_val(case_screw, "head_oversize")/2])
+                    rounding_edge_mask(l = 30, r = case_rounding, ang = 90, excess = 2, anchor = BOTTOM, spin = 180);
+                left(struct_val(case_screw, "head_size")/2 + struct_val(case_screw, "head_oversize")/2)
+                    rounding_edge_mask(l = 30, r = case_rounding, ang = 110, anchor = BOTTOM, spin = 180);
+            }
+        }
     }
     //All corners
     mirror_copy(RIGHT) mirror_copy(BACK)
         move([case_clamping_middle_offset, case_outer_dim_xy.y/2])
-            normal_case_screw()
+            normal_case_screw(corner_fillets = true)
                 //this one ensures proper wall thickness for the screws in the lid, but keeps it nicely short on the outside
                 if(upper && positive) up(gasket_thickness)
                     pie_slice(lid_internal_height, d=$tube_od, ang = 90, anchor = BOTTOM, spin = 180);
@@ -198,7 +207,7 @@ module screw_point(
     nut_slot_z_clearance = 0.8, //makes the nut slot higher, for easy fit
     nut_slop = 0, //general slop for nut slots
     bridge_helper_width = s4_walls, bridge_helper_height = layer_height, //makes the first part of the hole in the lower part rectangular for easy bridging
-    head_counterbore_length = 20, //length of the cutout for the screw head in the upper part
+    head_counterbore_length = 30, //length of the cutout for the screw head in the upper part
     tube_extra_length = 9,
     screw_hole_extra_length = 4,
     gap = 0, //gap between lower and upper part. reduces the size of the upper part while keeping the distance between the nut and the screw head the same.
@@ -209,7 +218,7 @@ module screw_point(
     screw_hole_dia = struct_val(screw_info, "diameter") + struct_val(screw_info, "shaft_oversize");
 //    $tube_od = struct_val(nut_info, "width") + 2*nut_insert_wall;
     $tube_od = struct_val(screw_info, "head_size") + struct_val(screw_info, "head_oversize") + 2*nut_insert_wall;
-    upper_tube_height = struct_val(screw_info, "length") - screw_bite + struct_val(screw_info, "head_height");
+    $upper_tube_height = struct_val(screw_info, "length") - screw_bite + struct_val(screw_info, "head_height");
     lower_height = screw_bite + tube_extra_length;
     nut_trap_height = struct_val(nut_info, "thickness") + nut_slot_z_clearance + bridge_helper_height;
 
@@ -242,7 +251,7 @@ module screw_point(
         if(upper)
             tag(keep_tag) difference(){
                 //cyl is used upside down, so the teardrop has an effect
-                up(gap) cyl(upper_tube_height - gap, d=$tube_od, anchor = TOP, orient=DOWN, rounding1 = rounding2, teardrop = teardrop2);
+                up(gap) cyl($upper_tube_height - gap, d=$tube_od, anchor = TOP, orient=DOWN, rounding1 = rounding2, teardrop = teardrop2);
                 upper_negative();
             }
         //all the geometry needed to support the nut and screw hole
