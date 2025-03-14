@@ -36,6 +36,7 @@ module lid_test(only_screen = false) part("tests/pcb_screws.stl"){
 //When rendering in OpenSCAD, explode the parts sideways up to be able to differentiate them.
 //final export is done through partsScad, and during that the exploding is deactivated
 //More information on how to export this project to distinct stl files: https://web.archive.org/web/20221117221043/https://traverseda.github.io/code/partsScad/index.html
+//IMPORTANT: you have to export the model twice with the command "multipart case.scad" this is because of a hack with exporting a dxf, which I import again
 
 //Views to help see what I am modelling
 //bottom_half(s = 300, z = lid_internal_height) //View without baseplate
@@ -48,8 +49,13 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
 
     gasket(anchor = BOTTOM);
 
-    up(gasket_thickness)
+    up(gasket_thickness) part("lid.stl") recolor("DarkRed"){
         lid(anchor = BOTTOM);
+        color("Red") lip_3d(s2_walls, gasket_thickness, 0.5, chamfer_height = 3.4, z_overlap = 0.6, shrink_chamfer = case_wall + s2_walls + 0.5, slim_chamfer = false)
+            //missusing the export/import function as cache, you have to render twice if the lid_2d_interface changed, to get an up to date result
+            //rendering twice everything, is still way faster, than rendering the lid a bazillion times
+            import("tmp/lid_2d_interface.dxf");
+    }
 
     %multmatrix(pcb_transform_matrix) move(pcb_usb_position)
         left(s2_walls + usb_external_to_internal_thread_gap) test_plug(anchor = TOP, orient = RIGHT);
@@ -286,56 +292,69 @@ module screw_point(
     children();
 }
 
-seam_lip_width = s2_walls;
-//space which will be between the lip and the fitting part
-seam_lip_slop = 0.5;
+//seam_lip_width: Wall thickness of the generated lip
+//seam_lip_height: Height of the lip
+//seam_lip_slop: Space which will be between the lip and the fitting part
+//shrink_chamfer: If not zero, whole 2d profile will be shrunk, not only reduced to original size.
+//    Mostly needed when the model has no straight side walls, where the lip is attached
+//slim_chamfer: Slims the chamfer, as it goes up. Recommended to deactivate, when using shrink chamfer
+//chamfer_height: height of the chamfer
+//z_overlap: how much of the lip will be extruded up, before starting with the chamfer
+module lip_3d(seam_lip_width, lip_height, seam_lip_slop, shrink_chamfer = 0, slim_chamfer = true, chamfer_height = 2.5, z_overlap = 1.5){
+    module seam_lip(width, slop = 0){
+        difference(){
+            offset(r = width + slop) children();
+            offset(r = slop) fill() children();
+        }
+    }
+
+    //offsets the given profile by changing amount along the extrusion length
+    module stepped_seam_lip_extrude(h, step_size, r = 0, delta = 0, both_r = 0){
+        for (z = [0:step_size:h]) {
+            up(z)
+                linear_extrude(step_size) difference(){
+                    offset(r = (slim_chamfer ? r/h*(h-z) : r) + both_r/h*z) offset(delta = slim_chamfer ? delta/h*(h-z) : delta) children();
+                    offset(r= both_r/h*z) fill() children();
+                }
+        }
+    }
+
+    //the part of the lip that sticks out
+    down(lip_height)
+        linear_extrude(height=lip_height)
+            seam_lip(seam_lip_width, seam_lip_slop)
+                children();
+    //the part of the lip that is next to the original part
+    linear_extrude(height=z_overlap)
+            seam_lip(seam_lip_width + seam_lip_slop)
+                children();
+    //generate a chamfer
+    up(z_overlap) stepped_seam_lip_extrude(chamfer_height, $fs, r = seam_lip_width + seam_lip_slop, both_r = -shrink_chamfer) children();
+}
+
+module mold_part(main_dim, mold_height){
+    module mold_2d(){
+        difference() {
+            rect(main_dim);
+            children();
+        }
+    }
+    
+    linear_extrude(mold_height) mold_2d() children();
+    up(mold_height) bottom_half(z = 0.9) roof() mold_2d() children();
+}
 
 module screw_and_water_test(){
     size = 26;
 
-    z_overlap = 1.5;
     lip_height = gasket_thickness;
-    lip_height_with_overlap = z_overlap + gasket_thickness;
 
     /*module fill_small_holes(r){
         offset(r = r) offset(r = -r) children();
     }*/
 
     module interface_2d(){
-        projection(cut = true) down(eps) top_part();
-    }
-
-    module lip_3d(){
-        module seam_lip(width, slop = 0){
-            difference(){
-                offset(r = width + slop) children();
-                offset(r = slop) fill() children();
-            }
-        }
-
-        //the part of the lip that sticks out
-        down(lip_height)
-            linear_extrude(height=lip_height)
-                seam_lip(seam_lip_width, seam_lip_slop)
-                    children();
-        //the part of the lip that is next to the original part
-        linear_extrude(height=z_overlap)
-                seam_lip(seam_lip_width + seam_lip_slop)
-                    children();
-        //generate a chamfer
-        up(z_overlap) linear_extrude(2.5, scale = 0.85) seam_lip(seam_lip_width, seam_lip_slop) children();
-    }
-
-    module mold_part(){
-        module mold_2d(){
-            difference() {
-                rect(size - 2*case_wall);
-                interface_2d();
-            }
-        }
-        
-        linear_extrude(lip_height) mold_2d();
-        up(lip_height) bottom_half(z = 3*layer_height) roof() mold_2d();
+        render() projection(cut = true) down(eps) top_part();
     }
 
     ydistribute(spacing = size + 5){
@@ -343,13 +362,13 @@ module screw_and_water_test(){
             bottom_half() cuby();
             down(gasket_thickness) //just to align it for printing
                 xrot(180){
-                    lip_3d()
+                    lip_3d(s2_walls, lip_height, 0.5)
                         interface_2d();
                     top_part();
                 }
         }
 
-        part("tests/water_and_screw_mold_PETG.stl") mold_part();
+        part("tests/water_and_screw_mold_PETG.stl") mold_part(size - 2*case_wall, lip_height) interface_2d();
 
         part("tests/water_and_screw_TPU.stl") bottom_half() down(gasket_thickness) top_half() cuby();
     }
@@ -381,7 +400,7 @@ module closed_rect_tube(h, size, wall, anchor = CENTER, spin = 0, orient = UP){
     }
 }
 
-module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("DarkRed"){
+module lid(anchor = BOTTOM, spin=0, orient=UP){
     anchors = [
         named_anchor("LID_INTERNAL", [0, 0, 0])
     ];
@@ -419,13 +438,24 @@ module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("DarkRed"
     }
 }
 
+//This will be only run, when run from the multipart script
+//Warning: multiPartOutput can and will have other values than false, so don't try to be smart, leave it
+if(multiPartOutput != false)
+    lid_2d_interface();
+
+//Exporting the 2d interface, to be able to use it from the filesystem (cheap cache)
+module lid_2d_interface() part("tmp/lid_2d_interface.dxf"){
+    projection(cut=true) down(eps)
+        lid();
+}
+
 module gasket(anchor = BOTTOM, spin=0, orient=UP) part("gasket.stl") recolor("white"){
     attachable(anchor, spin, orient, size = concat(case_outer_dim_xy, gasket_thickness)){
         union(){
             //the gasket should have the same shape as the BOTTOM of the lid, so we just take the shape from there
             position(BOTTOM)
-                linear_extrude(gasket_thickness) projection(cut=true) down(eps)
-                    lid();
+                linear_extrude(gasket_thickness)
+                    import("tmp/lid_2d_interface.dxf");
             //add a small feature to connect the isle of gasket for the cable channel to the rest
             move(cable_screw_position)
                 rotate(-50) right(case_wall )

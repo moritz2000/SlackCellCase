@@ -74,7 +74,7 @@ module test_plug(anchor = CENTER, spin = 0, orient = UP){
                     position(CENTER)
                         cuboid([8, 38, grip_height], rounding = 4, edges = "Z", anchor = CENTER);
                     tag("remove") position(BOTTOM)
-                        mirror(BACK)text3d("USB", h=2*layer_height, size = 7, anchor = BOTTOM, atype="ycenter", spin = 90);
+                        mirror(BACK)text3d("USB", h=0.6, size = 7, anchor = BOTTOM, atype="ycenter", spin = 90);
                 }
 
             //offset the upper surface so there is space for a knot

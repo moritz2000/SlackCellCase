@@ -15,7 +15,7 @@ $align_msg = false;
 //Settings for Preview and Rendering
 //Only generate the round features with high detail when it is rendering for exporting the stl. This gives us faster previews
 $fa = $preview ? 10 : 1;
-$fs = $preview ? 1 : 0.25;
+$fs = $preview ? 1 : min(layer_height, 0.25);
 
 //used to get section views. Use only false or $preview. This way the render is unaffected.
 show_only_left_half = false;//$preview;
