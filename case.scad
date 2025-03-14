@@ -38,8 +38,9 @@ module lid_test(only_screen = false) part("tests/pcb_screws.stl"){
 //More information on how to export this project to distinct stl files: https://web.archive.org/web/20221117221043/https://traverseda.github.io/code/partsScad/index.html
 
 //Views to help see what I am modelling
-//right_half(s=300, x = -41) left_half(s=300, x = 41) //View with short sides cut away
-//back_half(s=300, y = -case_inner_dim_xy.y/2 + eps) front_half(s=300, y = case_inner_dim_xy.y/2 - eps) //View with long sides cut away
+//bottom_half(s = 300, z = lid_internal_height) //View without baseplate
+//right_half(s = 300, x = -41) left_half(s = 300, x = 41) //View with short sides cut away
+//back_half(s = 300, y = -case_inner_dim_xy.y/2 + eps) front_half(s=300, y = case_inner_dim_xy.y/2 - eps) //View with long sides cut away
 xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacing){
     case(anchor = TOP);
     
@@ -49,6 +50,9 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
 
     up(gasket_thickness)
         lid(anchor = BOTTOM);
+
+    %multmatrix(pcb_transform_matrix) move(pcb_usb_position)
+        left(s2_walls + usb_external_to_internal_thread_gap) test_plug(anchor = TOP, orient = RIGHT);
 
     if($preview)
         %multmatrix(pcb_transform_matrix) pcb(anchor = TOP)
@@ -368,7 +372,7 @@ module closed_rect_tube(h, size, wall, anchor = CENTER, spin = 0, orient = UP){
     }
 }
 
-module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlue"){
+module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("DarkRed"){
     anchors = [
         named_anchor("LID_INTERNAL", [0, 0, 0])
     ];
@@ -387,7 +391,7 @@ module lid(anchor = BOTTOM, spin=0, orient=UP) part("lid.stl") recolor("SlateBlu
                 pcb_button_holes();
                 multmatrix(pcb_transform_matrix) pcb_dev_board_pushers();
                 *lid_seal();
-                *multmatrix(pcb_transform_matrix) move(pcb_usb_position) rotate(-90)
+                multmatrix(pcb_transform_matrix) move(pcb_usb_position) rotate(-90)
                     usb_c_covered_hole(anchor = BACK);
                 //this on adds and removes all parts needed for the cable channel
                 position(FRONT) back(case_wall){
@@ -422,7 +426,7 @@ module gasket(anchor = BOTTOM, spin=0, orient=UP) part("gasket.stl") recolor("wh
     }
 }
 
-module case(anchor = TOP, spin=0, orient=UP) part("case.stl") recolor("FireBrick"){
+module case(anchor = TOP, spin=0, orient=UP) part("case.stl") recolor("MediumOrchid"){ //is printed in black, but thats hard to see in cad
     attachable(anchor, spin, orient, size = concat(case_outer_dim_xy, case_inner_dim_z + case_wall)){
         diff(){
             closed_rect_tube($parent_size.z, [$parent_size.x, $parent_size.y], case_wall);
