@@ -1,3 +1,4 @@
 *.stl
+tmp/
 GrabCad/*/*
 !GrabCad/*/*.stl

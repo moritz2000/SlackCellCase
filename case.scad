@@ -51,7 +51,7 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
 
     up(gasket_thickness) part("lid.stl") recolor("DarkRed"){
         lid(anchor = BOTTOM);
-        color("Red") lip_3d(s2_walls, gasket_thickness, 0.5, chamfer_height = 3.4, z_overlap = 0.6, shrink_chamfer = case_wall + s2_walls + 0.5, slim_chamfer = false)
+        color("Red") lip_3d(s2_walls, gasket_thickness, 0.5, chamfer_height = 3.4, z_overlap = 0.6, shrink_chamfer = case_wall + s2_walls + 0.5)
             //missusing the export/import function as cache, you have to render twice if the lid_2d_interface changed, to get an up to date result
             //rendering twice everything, is still way faster, than rendering the lid a bazillion times
             import("tmp/lid_2d_interface.dxf");
@@ -295,12 +295,10 @@ module screw_point(
 //seam_lip_width: Wall thickness of the generated lip
 //seam_lip_height: Height of the lip
 //seam_lip_slop: Space which will be between the lip and the fitting part
-//shrink_chamfer: If not zero, whole 2d profile will be shrunk, not only reduced to original size.
-//    Mostly needed when the model has no straight side walls, where the lip is attached
-//slim_chamfer: Slims the chamfer, as it goes up. Recommended to deactivate, when using shrink chamfer
+//shrink_chamfer: Whole outer edge of profile will be shrunk along the chamfer height.
 //chamfer_height: height of the chamfer
 //z_overlap: how much of the lip will be extruded up, before starting with the chamfer
-module lip_3d(seam_lip_width, lip_height, seam_lip_slop, shrink_chamfer = 0, slim_chamfer = true, chamfer_height = 2.5, z_overlap = 1.5){
+module lip_3d(seam_lip_width, lip_height, seam_lip_slop, shrink_chamfer = 0, chamfer_height = 2.5, z_overlap = 1.5){
     module seam_lip(width, slop = 0){
         difference(){
             offset(r = width + slop) children();
@@ -309,12 +307,17 @@ module lip_3d(seam_lip_width, lip_height, seam_lip_slop, shrink_chamfer = 0, sli
     }
 
     //offsets the given profile by changing amount along the extrusion length
-    module stepped_seam_lip_extrude(h, step_size, r = 0, delta = 0, both_r = 0){
+    module stepped_seam_lip_extrude(h, step_size, r = 0, variable_r = 0){
         for (z = [0:step_size:h]) {
             up(z)
-                linear_extrude(step_size) difference(){
-                    offset(r = (slim_chamfer ? r/h*(h-z) : r) + both_r/h*z) offset(delta = slim_chamfer ? delta/h*(h-z) : delta) children();
-                    offset(r= both_r/h*z) fill() children();
+                linear_extrude(step_size){
+                    difference(){
+                        offset(r =  r + variable_r/h*z) fill() children();
+                        difference(){
+                            fill() children();
+                            children();
+                        }
+                    }
                 }
         }
     }
@@ -325,11 +328,13 @@ module lip_3d(seam_lip_width, lip_height, seam_lip_slop, shrink_chamfer = 0, sli
             seam_lip(seam_lip_width, seam_lip_slop)
                 children();
     //the part of the lip that is next to the original part
-    linear_extrude(height=z_overlap)
+    linear_extrude(height=z_overlap){
             seam_lip(seam_lip_width + seam_lip_slop)
                 children();
+        children();
+    }
     //generate a chamfer
-    up(z_overlap) stepped_seam_lip_extrude(chamfer_height, $fs, r = seam_lip_width + seam_lip_slop, both_r = -shrink_chamfer) children();
+    up(z_overlap) stepped_seam_lip_extrude(chamfer_height, $fs, r = seam_lip_width + seam_lip_slop, variable_r = -shrink_chamfer) children();
 }
 
 module mold_part(main_dim, mold_height){
@@ -424,9 +429,7 @@ module lid(anchor = BOTTOM, spin=0, orient=UP){
                 //this on adds and removes all parts needed for the cable channel
                 position(FRONT) back(case_wall){
                     render() difference(){
-                        case_buldge(); //TODO: make sure it meets nicely with the case part, now it's offset from the previous printed gasket in between
-                                       //the projection of case and lid should be the same where they meet (disregarding the yet to come lip)
-                                       //just moving it up would solve the meeting face, but make it unnecessarily higher. complication making the internal lid for the big lid
+                        case_buldge();
                         //cutting away the bottom part
                         back(eps) up(gasket_thickness) cuboid([80, case_buldge_outer_dia, 40], anchor = TOP + BACK);
                     }
@@ -525,6 +528,9 @@ module case_buldge(diff = false){
                 //this cylinder expands the one side, through the hull to create a better interface between case, lid and gasket
                 right(loadcell_cable_nut_width/2)
                     cyl(2*case_wall, d= case_wall, anchor = BOTTOM + RIGHT, orient = FRONT);
+
+                //make the overhangs nicer
+                if(!diff) up(6) fwd(cell_to_case_gap_xy + case_wall/2) left(6) teardrop(l=15, d = 5, anchor = BOTTOM + BACK, spin = -90);
             }
         //for the part that is diffed away later, the minkowski is made with a smaller sphere
         front_half() sphere(r=(diff ? 0 : case_wall) + case_buldge_gap);
