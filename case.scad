@@ -9,7 +9,6 @@ include <pcb.scad>
 include <battery.scad>
 
 include <config.scad>
-include <usb_hole_plug.scad>
 include <libs/stl_modifier.scad>
 
 *screw_and_water_test();
@@ -57,11 +56,15 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
             import("tmp/lid_2d_interface.dxf");
     }
 
-    %multmatrix(pcb_transform_matrix) move(pcb_usb_position)
-        left(s2_walls + usb_external_to_internal_thread_gap) test_plug(anchor = TOP, orient = RIGHT);
+    multmatrix(pcb_transform_matrix){
+        move(pcb_usb_position)
+            left(s2_walls + struct_val(usb_plug_thread_config, "external_to_internal_thread_z_gap")) part("usb_plug.stl") threaded_plug(usb_plug_thread_config, text="USB", straight_height_before_grip_flanges = 2.5, anchor = TOP, spin = -45, orient = RIGHT);
+        move(pcb_sd_position)
+            back(s2_walls + struct_val(sd_plug_thread_config, "external_to_internal_thread_z_gap")) part("sd_plug.stl") threaded_plug(sd_plug_thread_config, sd_plug_grip_dia, text="SD", straight_height_before_grip_flanges = 2.5, anchor = TOP, spin = 45, orient = FRONT);
+    }
 
     if($preview)
-        %multmatrix(pcb_transform_matrix) pcb(anchor = TOP)
+        multmatrix(pcb_transform_matrix) pcb(anchor = TOP)
             attach(BOTTOM, TOP)
                 fwd(8) up(pcb_to_battery_spacing)
                     battery(spin = -90);
@@ -419,13 +422,17 @@ module lid(anchor = BOTTOM, spin=0, orient=UP){
                 case_clamping_screws(upper = true);
 
                 //adding all parts in the lid connected with the pcb
-                multmatrix(pcb_transform_matrix)  pcb_screws();
                 pcb_display_window();
                 pcb_button_holes();
-                multmatrix(pcb_transform_matrix) pcb_dev_board_pushers();
                 *lid_seal();
-                multmatrix(pcb_transform_matrix) move(pcb_usb_position) rotate(-90)
-                    usb_c_covered_hole(anchor = BACK);
+                multmatrix(pcb_transform_matrix){
+                    pcb_screws();
+                    pcb_dev_board_pushers();
+                    move(pcb_usb_position) rotate(-90)
+                        threaded_plug_hole(usb_plug_thread_config, usb_c_hole_dim, (-pcb_usb_position.z + lid_to_display_dist + case_wall)*2, anchor = BACK);
+                    move(pcb_sd_position) rotate(180)
+                        threaded_plug_hole(sd_plug_thread_config, sd_hole_dim, 27, wall_z_offset = 0.5, edges = [BOTTOM + LEFT, BOTTOM + RIGHT], anchor = BACK);
+                }
                 //this on adds and removes all parts needed for the cable channel
                 position(FRONT) back(case_wall){
                     render() difference(){
@@ -487,7 +494,7 @@ module case(anchor = TOP, spin=0, orient=UP) part("case.stl") recolor("MediumOrc
                     render() difference(){
                         case_buldge();
                         //cutting away the top part
-                        back(eps) cuboid([80, case_buldge_outer_dia, 15], anchor = BOTTOM + BACK);
+                        back(eps) cuboid([80, case_buldge_outer_dia, 25], anchor = BOTTOM + BACK);
                     }
                     move([0, eps, eps]) case_buldge(diff = true);
                 }

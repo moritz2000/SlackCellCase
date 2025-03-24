@@ -48,7 +48,7 @@ module load_cell(screw_ons = true, show_s_beam = true) {
             position(FRONT + TOP) loadcell_cable();
         }
         //cutouts
-        tag("remove") zrot_copies(n = 2) align(FRONT, RIGHT, inside=true, shiftout = eps) left(loadcell_cutout_to_edge)//TODO position
+        tag("remove") zrot_copies(n = 2) align(FRONT, RIGHT, inside=true, shiftout = eps) left(loadcell_cutout_to_edge)
             cuboid([loadcell_cutout_width, loadcell_cutout_length + eps, loadcell_dim.z + eps], rounding = loadcell_cutout_width/2, edges = [BACK + LEFT, BACK + RIGHT]);
     }
 }

@@ -56,9 +56,10 @@ pcb_button_positions = line_copies(
 //Center point of the plug side of the usb relative to TOP of the pcb assembly
 //taking the edge off the pcb for x instead of the tip of the usb port, so the usb port sits slightly in the hole
 pcb_usb_position = [-pcb_dim.x/2, -pcb_dim.y/2 + 18, -3.95];
+usb_c_hole_dim = [8.6, s2_walls, 3.7];
 
-
-
+pcb_sd_position = [-pcb_dim.x/2 + 13.5, pcb_dim.y/2 + 2.5, -pcb_dim.z + 4.5];
+sd_hole_dim = [12, s2_walls, 2.6];
 
 //show pcb including the screw points
 *pcb()
@@ -96,6 +97,7 @@ module pcb(anchor = CENTER, spin = 0, orient = UP){
             position(TOP){
                 pcb_button_board();
                 *move(pcb_usb_position) cyl(6.6, d=15, anchor = BOTTOM, orient = LEFT);
+                *move(pcb_sd_position) cyl(6.6, d=15, anchor = BOTTOM, orient = BACK);
             }
         }
         children();

@@ -4,6 +4,7 @@ include <BOSL2/std.scad>
 include <loadCell.scad>
 include <pcb.scad>
 include <battery.scad>
+include <usb_hole_plug.scad>
 include <slicer_config.scad>
 
 //ignore message about changes in BOSL api
@@ -69,6 +70,10 @@ display_to_window_dist = 0.2; //so small, because window is curved
 //diameter of the holes of the four buttons under the display
 button_hole_dia = 10.4;
 
+sd_plug_grip_dia = 24;
+
+bottom_pcb_to_lid_opening_z_dist = 12;
+
 ////////////////////////
 //Calculated dimensions:
 
@@ -77,10 +82,20 @@ case_inner_dim_z = loadcell_dim.z + 2*cell_to_case_gap_z;
 
 case_outer_dim_xy = case_inner_dim_xy + repeat(2*case_wall, 2);
 
+//Stuff for the sd and usb c plugs
+outer_lid_to_usb = case_outer_dim_xy.y/2 + pcb_usb_position.x;
+usb_plug_inner_height = outer_lid_to_usb - s2_walls;
+
+outer_lid_to_sd = case_outer_dim_xy.x/2 - pcb_sd_position.y;
+sd_plug_inner_height = outer_lid_to_sd - s2_walls;
+
+usb_plug_thread_config = thread_config(17, usb_plug_inner_height);
+sd_plug_thread_config = thread_config(20, sd_plug_inner_height);
+
 //distance between inner top surface of the lid and the topmost surface from the display in z direction
 lid_to_display_dist = window_dim.z - case_wall + window_inset + display_to_window_dist;
 
-lid_internal_height = lid_to_display_dist + pcb_dim.z + pcb_to_battery_spacing + battery_dim.z;
+lid_internal_height = lid_to_display_dist + pcb_dim.z + bottom_pcb_to_lid_opening_z_dist;
 
 //transform of the pcb relativ to BOTTOM of lid
 //Usage: multmatrix(pcb_transfrom_matrix)
