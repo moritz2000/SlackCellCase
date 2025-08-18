@@ -7,6 +7,7 @@ include <partsScad/partsScad.scad>
 include <loadCell.scad>
 include <pcb.scad>
 include <battery.scad>
+include <button_insert.scad>
 
 include <config.scad>
 include <libs/stl_modifier.scad>
@@ -61,6 +62,7 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
             left(s2_walls + struct_val(usb_plug_thread_config, "external_to_internal_thread_z_gap")) part("usb_plug.stl") threaded_plug(usb_plug_thread_config, text="USB", straight_height_before_grip_flanges = 2.5, anchor = TOP, spin = -45, orient = RIGHT);
         move(pcb_sd_position)
             back(s2_walls + struct_val(sd_plug_thread_config, "external_to_internal_thread_z_gap")) part("sd_plug.stl") threaded_plug(sd_plug_thread_config, sd_plug_grip_dia, text="SD", straight_height_before_grip_flanges = 2.5, anchor = TOP, spin = 45, orient = FRONT);
+        button_insert();
     }
 
     if($preview)
