@@ -76,12 +76,12 @@ module threaded_plug(thread_config, grip_dia = 22, grip_height = 4, straight_hei
                     position(BOTTOM)
                         cuboid([flange_width, grip_dia + 2*flange_length, grip_height], rounding = flange_width/2, edges = "Z", anchor = BOTTOM);
                     tag("remove") position(BOTTOM)
-                        mirror(BACK)text3d(text, h=0.6, size = 7, anchor = BOTTOM, atype="ycenter", spin = 90);
+                        mirror(BACK)text3d(text, h=1.2, size = 7, anchor = BOTTOM, atype="ycenter", spin = 90);
                 }
 
             //offset the upper surface so there is space for a knot
             attach(TOP, TOP, inside = true)
-                cyl(2, d=id - 2*s4_walls, rounding2 = -1);
+                cyl(2, d=id - 2*s6_walls, rounding2 = -1);
             
             //make a channel to attach a keep cord
             tag("remove")position(TOP)
