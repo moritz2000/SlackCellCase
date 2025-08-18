@@ -12,6 +12,10 @@ include <button_insert.scad>
 include <config.scad>
 include <libs/stl_modifier.scad>
 
+//This project uses the library PartsScad for exporting all stl's in one go.
+//IMPORTANT: you have to export the model TWICE with the command "multipart case.scad" this is because of a hack with exporting a dxf, which I import again (which creates an external cache)
+//More information on how to export this project to distinct stl files: https://web.archive.org/web/20221117221043/https://traverseda.github.io/code/partsScad/index.html
+
 *screw_and_water_test();
 *lid_seal();
 *lid_test();
@@ -38,15 +42,14 @@ module lid_test(only_screen = false) part("tests/pcb_screws.stl"){
 if(multiPartOutput != false)
     lid_2d_interface();
 
-//When rendering in OpenSCAD, explode the parts sideways up to be able to differentiate them.
-//final export is done through partsScad, and during that the exploding is deactivated
-//More information on how to export this project to distinct stl files: https://web.archive.org/web/20221117221043/https://traverseda.github.io/code/partsScad/index.html
-//IMPORTANT: you have to export the model twice with the command "multipart case.scad" this is because of a hack with exporting a dxf, which I import again
 
 //Views to help see what I am modelling
 //bottom_half(s = 300, z = lid_internal_height) //View without baseplate
 //right_half(s = 300, x = -41) left_half(s = 300, x = 41) //View with short sides cut away
 //back_half(s = 300, y = -case_inner_dim_xy.y/2 + eps) front_half(s=300, y = case_inner_dim_xy.y/2 - eps) //View with long sides cut away
+
+//When rendering in OpenSCAD, explode the parts sideways up to be able to differentiate them.
+//Final export is done through PartsScad, and during that the exploding is deactivated.
 xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacing){
     case(anchor = TOP);
     
