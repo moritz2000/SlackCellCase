@@ -33,6 +33,11 @@ module lid_test(only_screen = false) part("tests/pcb_screws.stl"){
     }
 }
 
+//This will be only run, when run from the multipart script
+//Warning: multiPartOutput can and will have other values than false, so don't try to be smart, leave it
+if(multiPartOutput != false)
+    lid_2d_interface();
+
 //When rendering in OpenSCAD, explode the parts sideways up to be able to differentiate them.
 //final export is done through partsScad, and during that the exploding is deactivated
 //More information on how to export this project to distinct stl files: https://web.archive.org/web/20221117221043/https://traverseda.github.io/code/partsScad/index.html
@@ -58,11 +63,19 @@ xdistribute(spacing = ($preview || multiPartOutput != false) ? 0 : render_spacin
     }
 
     multmatrix(pcb_transform_matrix){
+        //Making the usb plug
         move(pcb_usb_position)
             left(s2_walls + struct_val(usb_plug_thread_config, "external_to_internal_thread_z_gap")) part("usb_plug.stl") threaded_plug(usb_plug_thread_config, text="USB", straight_height_before_grip_flanges = 2.5, anchor = TOP, spin = -45, orient = RIGHT);
+        //Making the sd plug
         move(pcb_sd_position)
             back(s2_walls + struct_val(sd_plug_thread_config, "external_to_internal_thread_z_gap")) part("sd_plug.stl") threaded_plug(sd_plug_thread_config, sd_plug_grip_dia, text="SD", straight_height_before_grip_flanges = 2.5, anchor = TOP, spin = 45, orient = FRONT);
         button_insert();
+    }
+
+    part("lid_silicon_mold.stl") difference(){
+        mold_part(gasket_thickness, 1.2)
+            import("tmp/lid_2d_interface.dxf");
+        cuboid([case_inner_dim_xy.x - 15, case_inner_dim_xy.y - 15, 5], rounding = 5, edges = "Z", anchor = CENTER);
     }
 
     if($preview)
@@ -342,16 +355,16 @@ module lip_3d(seam_lip_width, lip_height, seam_lip_slop, shrink_chamfer = 0, cha
     up(z_overlap) stepped_seam_lip_extrude(chamfer_height, $fs, r = seam_lip_width + seam_lip_slop, variable_r = -shrink_chamfer) children();
 }
 
-module mold_part(main_dim, mold_height){
+module mold_part(mold_height, chamfer_height, fill_hole_r = 2){
     module mold_2d(){
-        difference() {
-            rect(main_dim);
+        offset(delta = fill_hole_r) offset(delta = -fill_hole_r) difference() {
+            fill() children();
             children();
         }
     }
     
     linear_extrude(mold_height) mold_2d() children();
-    up(mold_height) bottom_half(z = 0.9) roof() mold_2d() children();
+    up(mold_height) bottom_half(z = chamfer_height, s= 200) roof() mold_2d() children();
 }
 
 module screw_and_water_test(){
@@ -378,7 +391,7 @@ module screw_and_water_test(){
                 }
         }
 
-        part("tests/water_and_screw_mold_PETG.stl") mold_part(size - 2*case_wall, lip_height) interface_2d();
+        part("tests/water_and_screw_mold_PETG.stl") mold_part(lip_height, 0.9) interface_2d();
 
         part("tests/water_and_screw_TPU.stl") bottom_half() down(gasket_thickness) top_half() cuby();
     }
@@ -449,11 +462,6 @@ module lid(anchor = BOTTOM, spin=0, orient=UP){
         children();
     }
 }
-
-//This will be only run, when run from the multipart script
-//Warning: multiPartOutput can and will have other values than false, so don't try to be smart, leave it
-if(multiPartOutput != false)
-    lid_2d_interface();
 
 //Exporting the 2d interface, to be able to use it from the filesystem (cheap cache)
 module lid_2d_interface() part("tmp/lid_2d_interface.dxf"){
