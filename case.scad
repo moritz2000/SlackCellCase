@@ -1,8 +1,9 @@
-include <BOSL2/std.scad>
-include <BOSL2/screws.scad>
-include <BOSL2/rounding.scad>
+include <libs/BOSL2/std.scad>
+include <libs/BOSL2/screws.scad>
+include <libs/BOSL2/rounding.scad>
 
-include <partsScad/partsScad.scad>
+include <libs/partsScad/partsScad.scad>
+include <libs/stl_modifier.scad>
 
 include <loadCell.scad>
 include <pcb.scad>
@@ -10,7 +11,6 @@ include <battery.scad>
 include <button_insert.scad>
 
 include <config.scad>
-include <libs/stl_modifier.scad>
 
 //This project uses the library PartsScad for exporting all stl's in one go.
 //IMPORTANT: you have to export the model TWICE with the command "multipart case.scad" this is because of a hack with exporting a dxf, which I import again (which creates an external cache)

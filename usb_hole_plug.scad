@@ -1,6 +1,6 @@
-include <BOSL2/std.scad>
-include <partsScad/partsScad.scad>
-include <BOSL2/threading.scad>
+include <libs/BOSL2/std.scad>
+include <libs/BOSL2/threading.scad>
+include <libs/partsScad/partsScad.scad>
 
 *part("tests/usb_plug_hole.stl"){
         diff() threaded_plug_hole();

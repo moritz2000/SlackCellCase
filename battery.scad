@@ -1,4 +1,4 @@
-include <BOSL2/std.scad>
+include <libs/BOSL2/std.scad>
 
 //battery() show_anchors();
 battery_dim = [52.5, 41, 5];

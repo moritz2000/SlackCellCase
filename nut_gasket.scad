@@ -1,5 +1,5 @@
-include <BOSL2/std.scad>
-include <BOSL2/screws.scad>
+include <libs/BOSL2/std.scad>
+include <libs/BOSL2/screws.scad>
 
 
 nut_info = nut_info("M16", thickness = 12.5, thread="none");

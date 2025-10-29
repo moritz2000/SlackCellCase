@@ -11,7 +11,7 @@
 
 //grid pcb
 //https://grabcad.com/library/universal_board_50x70mm-1
-include <BOSL2/std.scad>
+include <libs/BOSL2/std.scad>
 include <slicer_config.scad>
 
 //pcb() show_anchors();

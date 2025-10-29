@@ -1,4 +1,4 @@
-include <BOSL2/std.scad>
+include <libs/BOSL2/std.scad>
 
 //these includes are made to base some dimensions on the variables in them
 include <loadCell.scad>

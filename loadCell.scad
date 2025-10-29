@@ -1,5 +1,5 @@
-include <BOSL2/std.scad>
-include <BOSL2/screws.scad>
+include <libs/BOSL2/std.scad>
+include <libs/BOSL2/screws.scad>
 
 //Dimensions of PSD-S1 s-beam load cell, as defined by manufacturer, and measured for the cutout.
 //Datasheet can be found here: http://www.pushton.com/?m=home&c=View&a=index&aid=122

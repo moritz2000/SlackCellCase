@@ -1,8 +1,9 @@
-include <BOSL2/std.scad>
+include <libs/BOSL2/std.scad>
+include <libs/partsScad/partsScad.scad>
+
 include <config.scad>
 include <pcb.scad>
 
-include <partsScad/partsScad.scad>
 button_insert();
 
 button_hole_xy_gap = 0.1;
